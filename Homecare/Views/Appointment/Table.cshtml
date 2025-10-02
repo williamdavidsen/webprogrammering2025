@@ -1,0 +1,27 @@
+@model IEnumerable<Homecare.Models.Appointment>
+@{
+    ViewBag.Title = "Appointments";
+}
+<h1>@ViewBag.Title</h1>
+
+<table class="table table-striped">
+    <tr>
+        <th>Id</th>
+        <th>AvailableDayId</th>
+        <th>Slot</th>
+        <th>Client</th>
+        <th>Status</th>
+        <th>Notes</th>
+    </tr>
+    @foreach (var a in Model)
+    {
+        <tr>
+            <td>@a.AppointmentId</td>
+            <td>@a.AvailableDayId</td>
+            <td>@a.SlotIndex</td>
+            <td>@a.ClientName</td>
+            <td>@a.Status</td>
+            <td>@a.Notes</td>
+        </tr>
+    }
+</table>

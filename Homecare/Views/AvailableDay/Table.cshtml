@@ -1,0 +1,23 @@
+@model IEnumerable<Homecare.Models.AvailableDay>
+@{
+    ViewBag.Title = "Available Days";
+}
+<h1>@ViewBag.Title</h1>
+
+<table class="table table-striped">
+    <tr>
+        <th>Id</th>
+        <th>Personnel</th>
+        <th>Day</th>
+        <th>Status</th>
+    </tr>
+    @foreach (var d in Model)
+    {
+        <tr>
+            <td>@d.AvailableDayId</td>
+            <td>@d.PersonnelName</td>
+            <td>@d.Day.ToString("yyyy-MM-dd")</td>
+            <td>@d.Status</td>
+        </tr>
+    }
+</table>
