@@ -1,0 +1,36 @@
+@model IEnumerable<Homecare.Models.AvailableDay>
+
+<table class="table table-hover table-sm mb-0">
+    <thead class="table-light">
+        <tr>
+            <th>#</th>
+            <th>Personnel</th>
+            <th>Day</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var d in Model)
+        {
+            <tr>
+                <td>@d.AvailableDayId</td>
+                <td>
+                    <a asp-controller="AvailableDay" asp-action="Details" asp-route-id="@d.AvailableDayId">
+                        @d.PersonnelName
+                    </a>
+                </td>
+                <td>@d.Day.ToString("yyyy-MM-dd")</td>
+                <td>
+                    <span class="badge @(d.Status == "Open" ? "text-bg-success" : "text-bg-secondary")">@d.Status</span>
+                </td>
+                <td class="text-end">
+                    <a class="btn btn-sm btn-outline-primary" asp-controller="AvailableDay" asp-action="Details"
+                        asp-route-id="@d.AvailableDayId">
+                        Details
+                    </a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
