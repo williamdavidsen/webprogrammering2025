@@ -1,3 +1,4 @@
+@using Homecare.Models
 @{
     ViewData["Title"] = "Appointments";
 
@@ -7,9 +8,12 @@
 
     string DayLabel(Appointment a)
     => a?.AvailableSlot?.Day.ToString("dddd, dd MMM yyyy") ?? "—";
+
     string TimeLabel(Appointment a)
-    => (a?.AvailableSlot is null) ? "—"
+    => (a?.AvailableSlot is null)
+    ? "—"
     : $"{a.AvailableSlot.StartTime:HH\\:mm}–{a.AvailableSlot.EndTime:HH\\:mm}";
+
     string Personnel(Appointment a)
     => a?.AvailableSlot?.Personnel?.Name ?? "—";
 }
@@ -17,7 +21,16 @@
 @section Styles {
     <link rel="stylesheet" href="~/css/client.css" asp-append-version="true" />
     <style>
-        /* sayfa üst barı (Tailwind header havası) */
+        .clickable-card {
+            cursor: pointer;
+            transition: .15s ease-in-out;
+        }
+
+        .clickable-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 .75rem 1.25rem rgba(0, 0, 0, .08);
+        }
+
         .page-bar {
             background: rgba(248, 250, 252, .9);
             backdrop-filter: blur(6px);
@@ -62,38 +75,34 @@
     {
         foreach (var a in upcoming)
         {
-            <div class="card cd-card mb-3">
+            <div class="card cd-card mb-3 js-link-card clickable-card"
+                data-href="@Url.Action("Details", "Appointment", new { id = a.AppointmentId })">
                 <div class="row g-4 align-items-start">
                     <div class="col-md-8 d-flex flex-column">
                         <div class="chip text-primary fw-semibold mb-1">Upcoming</div>
                         <h5 class="mb-1">@Personnel(a)</h5>
                         <div class="text-muted">@DayLabel(a) · @TimeLabel(a)</div>
+
                         @if (a.Tasks != null && a.Tasks.Any())
                         {
                             <div class="mt-2 small text-secondary">
                                 Tasks:
                                 @string.Join(", ",
                                 a.Tasks
-                                .Select(t => t.CareTask?.Description) // sadece CareTask açıklaması
+                                .Select(t => t.CareTask?.Description)
                                 .Where(s => !string.IsNullOrWhiteSpace(s))!
                                         )
                 </div>
                                 }
 
-                        }
-
-
                         <div class="mt-auto pt-2 d-flex flex-wrap gap-2">
-                            <a class="btn btn-outline-primary btn-sm" asp-controller="Appointment" asp-action="Edit"
-                                asp-route-id="@a.AppointmentId">
+                            <a class="btn btn-outline-primary btn-sm prevent-card-nav" asp-controller="Appointment"
+                                asp-action="Edit" asp-route-id="@a.AppointmentId">
                                 <i class="bi bi-pencil-square me-1"></i> Update
                             </a>
-                            <a class="btn btn-outline-secondary btn-sm" asp-controller="Appointment" asp-action="Details"
-                                asp-route-id="@a.AppointmentId">
-                                <i class="bi bi-eye me-1"></i> Details
-                            </a>
-                            <form asp-action="Delete" asp-route-id="@a.AppointmentId" method="post"
-                                onsubmit="return confirm('Delete this appointment?');" class="d-inline">
+
+                            <form asp-controller="Appointment" asp-action="Delete" asp-route-id="@a.AppointmentId" method="post"
+                                onsubmit="return confirm('Delete this appointment?');" class="d-inline prevent-card-nav">
                                 @Html.AntiForgeryToken()
                                 <button class="btn btn-outline-danger btn-sm" type="submit">
                                     <i class="bi bi-trash me-1"></i> Delete
@@ -124,9 +133,12 @@
         var n = 0;
         foreach (var a in past)
         {
-            var img = (++n % 2 == 0) ? Url.Content("~/images/dash-past-1.jpg")
+            var img = (++n % 2 == 0)
+            ? Url.Content("~/images/dash-past-1.jpg")
             : Url.Content("~/images/dash-past-2.jpg");
-            <div class="card cd-card opacity-75 mb-3">
+
+            <div class="card cd-card opacity-75 mb-3 js-link-card clickable-card"
+                data-href="@Url.Action("Details", "Appointment", new { id = a.AppointmentId })">
                 <div class="row g-4 align-items-start">
                     <div class="col-md-8 d-flex flex-column">
                         <div class="chip text-secondary mb-1">Completed</div>
@@ -139,20 +151,11 @@
                                 Tasks:
                                 @string.Join(", ",
                                 a.Tasks
-                                .Select(t => t.CareTask?.Description) // sadece CareTask açıklaması
+                                .Select(t => t.CareTask?.Description)
                                 .Where(s => !string.IsNullOrWhiteSpace(s))!
                                         )
                 </div>
                                 }
-
-
-
-                        <div class="mt-auto pt-2">
-                            <a class="btn btn-outline-secondary btn-sm" asp-controller="Appointment" asp-action="Details"
-                                asp-route-id="@a.AppointmentId">
-                                <i class="bi bi-eye me-1"></i> View Details
-                            </a>
-                        </div>
                     </div>
                     <div class="col-md-4">
                         <img src="@img" class="img-fluid cd-thumb" alt="Past appointment">
@@ -166,3 +169,18 @@
         <div class="text-muted">No past appointments.</div>
     }
 </div>
+
+@section Scripts {
+    <script>
+        document.querySelectorAll('.js-link-card').forEach(function (card) {
+            card.addEventListener('click', function () {
+                const href = card.getAttribute('data-href');
+                if (href) window.location.href = href;
+            });
+        });
+        // Kart içindeki eylem butonları kart tıklamasını tetiklemesin
+        document.querySelectorAll('.prevent-card-nav').forEach(function (el) {
+            el.addEventListener('click', function (e) { e.stopPropagation(); }, { capture: true });
+        });
+    </script>
+}

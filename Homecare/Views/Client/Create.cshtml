@@ -1,57 +1,107 @@
+@using Homecare.Models
 @model Appointment
 @{
     ViewData["Title"] = "Book Appointment";
-    var clientId = (int)ViewBag.ClientId;
-    var dayOptions = (SelectList)ViewBag.DayOptions;
-    var slotOptions = (SelectList)ViewBag.SlotOptions;
-    var taskOptions = (MultiSelectList)ViewBag.TaskOptions;
-}
-<h2 class="mb-3">@ViewData["Title"]</h2>
 
-<form asp-action="Create" method="post" class="mt-2">
-    <input type="hidden" name="ClientId" value="@clientId" />
-    <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-4">
+    var clientId = (int)ViewBag.ClientId;
+    var dayItems = ViewBag.DayItems as List<SelectListItem> ?? new();
+    var slotItems = ViewBag.SlotItems as List<SelectListItem> ?? new();
+    var taskOptions = ViewBag.TaskOptions as MultiSelectList;
+}
+
+<h2 class="mb-3">Book Appointment</h2>
+<partial name="~/Views/Shared/_Message.cshtml" />
+
+<form asp-action="Create" method="post" class="card p-3">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="ClientId" />
+
+    <div class="row g-3">
+        <div class="col-md-6">
             <label class="form-label">Day</label>
-            <select class="form-select" id="daySelect">
-                <option value="">-- Select day --</option>
-                @foreach (var d in dayOptions)
+            <select id="daySelect" class="form-select">
+                <option value="">Select a day...</option>
+                @foreach (var it in dayItems)
                 {
-                    <option value="@d.Value">@d.Text</option>
+                    <option value="@it.Value" disabled="@(it.Disabled ? "disabled" : null)">
+                        @it.Text
+                    </option>
                 }
             </select>
+            <div class="form-text">Boş slotu olmayan günler pasiftir.</div>
         </div>
-        <div class="col-12 col-md-8">
-            <label class="form-label">Available time</label>
-            <select asp-for="AvailableSlotId" asp-items="slotOptions" class="form-select">
-                <option value="">-- Select time --</option>
+
+        <div class="col-md-6">
+            <label asp-for="AvailableSlotId" class="form-label">Slot</label>
+            <select asp-for="AvailableSlotId" class="form-select" id="slotSelect">
+                <option value="">Önce gün seçiniz</option>
+                @foreach (var s in slotItems)
+                {
+                    <option value="@s.Value">@s.Text</option>
+                }
             </select>
             <span asp-validation-for="AvailableSlotId" class="text-danger"></span>
         </div>
+
         <div class="col-12">
-            <label class="form-label">Services</label>
-            <select name="selectedTaskIds" asp-items="taskOptions" class="form-select" multiple size="4"></select>
-            <div class="form-text">Hold Ctrl/⌘ to choose multiple.</div>
+            <label class="form-label">Requested Tasks</label>
+            <select name="selectedTaskIds" multiple class="form-select">
+                @if (taskOptions != null)
+                {
+                    foreach (var item in taskOptions)
+                    {
+                        <option value="@item.Value">@item.Text</option>
+                    }
+                }
+            </select>
+            <div class="form-text">Birden fazla görev seçebilirsiniz.</div>
         </div>
+
         <div class="col-12">
-            <label asp-for="Description" class="form-label">Notes (optional)</label>
+            <label asp-for="Description" class="form-label">Notes</label>
             <textarea asp-for="Description" class="form-control" rows="3"></textarea>
         </div>
     </div>
 
     <div class="mt-3 d-flex gap-2">
-        <button class="btn btn-primary" type="submit">Book</button>
-        <a class="btn btn-secondary" asp-action="Dashboard" asp-route-clientId="@clientId">Cancel</a>
+        <button type="submit" class="btn btn-primary">Book</button>
+        <a asp-action="Dashboard" asp-route-clientId="@clientId" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
 
 @section Scripts {
     <script>
-        document.getElementById('daySelect')?.addEventListener('change', function () {
-            const v = this.value;
-            const cid = '@clientId';
-            const url = '@Url.Action("Create", "Client")' + `?clientId=${cid}` + (v ? `&day=${encodeURIComponent(v)}` : '');
-            window.location.href = url;
+        const daySelect = document.getElementById('daySelect');
+        const slotSelect = document.getElementById('slotSelect');
+
+        daySelect.addEventListener('change', async function () {
+            const day = this.value;
+            slotSelect.innerHTML = '<option value="">Loading...</option>';
+
+            if (!day) {
+                slotSelect.innerHTML = '<option value="">Önce gün seçiniz</option>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/Client/SlotsForDay?day=${encodeURIComponent(day)}`);
+                const slots = await res.json();
+
+                if (!slots || slots.length === 0) {
+                    slotSelect.innerHTML = '<option value="">Bu gün için boş slot yok</option>';
+                    return;
+                }
+
+                slotSelect.innerHTML = '';
+                for (const s of slots) {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.label;
+                    slotSelect.appendChild(opt);
+                }
+            } catch (e) {
+                slotSelect.innerHTML = '<option value="">Hata oluştu</option>';
+            }
         });
     </script>
 }
