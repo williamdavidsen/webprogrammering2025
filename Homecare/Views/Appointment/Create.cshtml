@@ -1,0 +1,37 @@
+@model Appointment
+@{
+    ViewData["Title"] = "Create Appointment";
+}
+<h2 class="mb-3">@ViewData["Title"]</h2>
+
+<form asp-action="Create" method="post" class="mt-2">
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label">Client</label>
+            <select asp-for="ClientId" asp-items="ViewBag.Clients" class="form-select" required></select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Available Slot</label>
+            <select asp-for="AvailableSlotId" asp-items="ViewBag.FreeSlots" class="form-select" required>
+                <option value="">-- Select --</option>
+            </select>
+            <span asp-validation-for="AvailableSlotId" class="text-danger"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Status" class="form-label">Status</label>
+            <select asp-for="Status" class="form-select">
+                <option value="0">Scheduled</option>
+                <option value="1">Completed</option>
+                <option value="2">Cancelled</option>
+            </select>
+        </div>
+        <div class="col-12">
+            <label asp-for="Description" class="form-label">Notes</label>
+            <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+        </div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Create</button>
+        <a class="btn btn-secondary" asp-action="Table">Cancel</a>
+    </div>
+</form>

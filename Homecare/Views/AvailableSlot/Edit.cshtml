@@ -1,0 +1,32 @@
+@model AvailableSlot
+@{
+    ViewData["Title"] = "Edit Slot";
+}
+<h2 class="mb-3">@ViewData["Title"]</h2>
+
+<form asp-action="Edit" method="post" class="mt-2 needs-validation" novalidate>
+    <input type="hidden" asp-for="AvailableSlotId" />
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label asp-for="PersonnelId" class="form-label">Personnel</label>
+            <select asp-for="PersonnelId" asp-items="ViewBag.PersonnelList" class="form-select" required></select>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Day" class="form-label">Day</label>
+            <input asp-for="Day" type="date" class="form-control" required />
+        </div>
+        <div class="col-md-6">
+            <label asp-for="StartTime" class="form-label">Start</label>
+            <input asp-for="StartTime" type="time" class="form-control" required />
+        </div>
+        <div class="col-md-6">
+            <label asp-for="EndTime" class="form-label">End</label>
+            <input asp-for="EndTime" type="time" class="form-control" required />
+            <span asp-validation-for="EndTime" class="text-danger"></span>
+        </div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+        <a class="btn btn-secondary" asp-action="Table">Cancel</a>
+    </div>
+</form>

@@ -1,0 +1,57 @@
+@model Appointment
+@{
+    ViewData["Title"] = "Book Appointment";
+    var clientId = (int)ViewBag.ClientId;
+    var dayOptions = (SelectList)ViewBag.DayOptions;
+    var slotOptions = (SelectList)ViewBag.SlotOptions;
+    var taskOptions = (MultiSelectList)ViewBag.TaskOptions;
+}
+<h2 class="mb-3">@ViewData["Title"]</h2>
+
+<form asp-action="Create" method="post" class="mt-2">
+    <input type="hidden" name="ClientId" value="@clientId" />
+    <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-4">
+            <label class="form-label">Day</label>
+            <select class="form-select" id="daySelect">
+                <option value="">-- Select day --</option>
+                @foreach (var d in dayOptions)
+                {
+                    <option value="@d.Value">@d.Text</option>
+                }
+            </select>
+        </div>
+        <div class="col-12 col-md-8">
+            <label class="form-label">Available time</label>
+            <select asp-for="AvailableSlotId" asp-items="slotOptions" class="form-select">
+                <option value="">-- Select time --</option>
+            </select>
+            <span asp-validation-for="AvailableSlotId" class="text-danger"></span>
+        </div>
+        <div class="col-12">
+            <label class="form-label">Services</label>
+            <select name="selectedTaskIds" asp-items="taskOptions" class="form-select" multiple size="4"></select>
+            <div class="form-text">Hold Ctrl/⌘ to choose multiple.</div>
+        </div>
+        <div class="col-12">
+            <label asp-for="Description" class="form-label">Notes (optional)</label>
+            <textarea asp-for="Description" class="form-control" rows="3"></textarea>
+        </div>
+    </div>
+
+    <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Book</button>
+        <a class="btn btn-secondary" asp-action="Dashboard" asp-route-clientId="@clientId">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        document.getElementById('daySelect')?.addEventListener('change', function () {
+            const v = this.value;
+            const cid = '@clientId';
+            const url = '@Url.Action("Create", "Client")' + `?clientId=${cid}` + (v ? `&day=${encodeURIComponent(v)}` : '');
+            window.location.href = url;
+        });
+    </script>
+}

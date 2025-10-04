@@ -1,13 +1,24 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Homecare.Models
 {
-    // Appointment binds a client to one of the 3 slots of an AvailableDay
     public class Appointment
     {
         public int AppointmentId { get; set; }
-        public int AvailableDayId { get; set; }       // FK-like (mock for now)
-        public int SlotIndex { get; set; }            // 1, 2, or 3
-        public string ClientName { get; set; } = string.Empty;
-        public string Status { get; set; } = "Scheduled"; // Scheduled/Completed/Cancelled
-        public string? Notes { get; set; }
+
+        [Required] public int AvailableSlotId { get; set; }  // FK -> AvailableSlot
+        [Required] public int ClientId { get; set; }         // FK -> User (Client)
+
+        [Required] public AppointmentStatus Status { get; set; } = AppointmentStatus.Scheduled;
+
+        [StringLength(500)]
+        public string? Description { get; set; }
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // navs
+        public AvailableSlot? AvailableSlot { get; set; }
+        public User? Client { get; set; }
+        public ICollection<TaskList> Tasks { get; set; } = new List<TaskList>();
     }
 }

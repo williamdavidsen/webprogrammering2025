@@ -1,139 +1,39 @@
 @{
-    ViewData["Title"] = "Welcome";
+    ViewData["Title"] = "Home";
 }
+<div class="p-4 p-md-5 bg-light rounded-3 mb-4">
+    <h1 class="display-6 mb-2">Homecare</h1>
+    <p class="lead mb-0">Book and manage homecare appointments easily.</p>
+</div>
 
-<section class="hc-hero">
-    <div class="container">
-
-        <div class="text-center">
-            <h1 class="hc-title">What's Your Role?</h1>
-            <p class="hc-sub">Select your role to get a personalized experience tailored to your needs.</p>
-        </div>
-
-        <div class="row align-items-center g-4">
-            <!-- Carousel — mobile: first, desktop: left -->
-            <div class="col-12 col-lg-6 order-1 order-lg-1">
-                <div id="homeCarousel" class="carousel slide" data-bs-ride="carousel">
-                    <div class="carousel-indicators">
-                        <button type="button" data-bs-target="#homeCarousel" data-bs-slide-to="0" class="active"
-                            aria-current="true"></button>
-                        <button type="button" data-bs-target="#homeCarousel" data-bs-slide-to="1"></button>
-                        <button type="button" data-bs-target="#homeCarousel" data-bs-slide-to="2"></button>
-                    </div>
-
-                    <div class="carousel-inner">
-                        <div class="carousel-item active">
-                            <img src="~/images/care1.jpg" class="d-block w-100" alt="Homecare">
-                            <div class="carousel-caption d-none d-md-block text-start">
-                                <h5>Homecare, made simple.</h5>
-                                <p>Open 3-slot days, book visits, and manage tasks with ease.</p>
-                            </div>
-                        </div>
-                        <div class="carousel-item">
-                            <img src="~/images/care2.jpg" class="d-block w-100" alt="Booking" loading="lazy"
-                                decoding="async">
-                            <div class="carousel-caption d-none d-md-block text-start">
-                                <h5>Book your appointment fast.</h5>
-                                <p>Clients pick Slot 1, 2, or 3 on an available day.</p>
-                            </div>
-                        </div>
-                        <div class="carousel-item">
-                            <img src="~/images/care3.jpg" class="d-block w-100" alt="Professionals" loading="lazy"
-                                decoding="async">
-                            <div class="carousel-caption d-none d-md-block text-start">
-                                <h5>Built for care professionals.</h5>
-                                <p>Nurses mark available days; admins oversee the system.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button class="carousel-control-prev" type="button" data-bs-target="#homeCarousel"
-                        data-bs-slide="prev">
-                        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-                        <span class="visually-hidden">Previous</span>
-                    </button>
-                    <button class="carousel-control-next" type="button" data-bs-target="#homeCarousel"
-                        data-bs-slide="next">
-                        <span class="carousel-control-next-icon" aria-hidden="true"></span>
-                        <span class="visually-hidden">Next</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Client / Older Adult — login card (mobile: second, desktop: right) -->
-            <div class="col-12 col-lg-6 order-2 order-lg-2">
-                <div class="hc-role-card hc-login-card">
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="hc-role-icon"><i class="bi bi-person-heart"></i></div>
-                        <div>
-                            <h3 class="h5 mb-1">Client / Older Adult</h3>
-                            <p class="mb-0 text-muted">Manage your appointments and communicate with your care team.</p>
-                        </div>
-                    </div>
-
-                    <!-- Pretty login form -->
-                    <form asp-controller="Auth" asp-action="ClientLogin" method="post" class="needs-validation"
-                        novalidate>
-                        <div class="form-floating mb-2">
-                            <input type="email" class="form-control" id="email" name="email"
-                                placeholder="name@example.com" required>
-                            <label for="email">Email</label>
-                            <div class="invalid-feedback">Please enter a valid email.</div>
-                        </div>
-
-                        <div class="form-floating mb-2">
-                            <input type="password" class="form-control" id="password" name="password"
-                                placeholder="Password" required minlength="4">
-                            <label for="password">Password</label>
-                            <div class="invalid-feedback">Please enter your password.</div>
-                        </div>
-
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="rememberMe" name="rememberMe">
-                                <label class="form-check-label" for="rememberMe">Remember me</label>
-                            </div>
-                            <a href="#" class="small">Forgot password?</a>
-                        </div>
-
-                        <button class="btn btn-primary w-100 mb-2" type="submit">
-                            Continue as Client/Older Adult
-                        </button>
-
-                        <div class="text-center text-muted small mb-2">or</div>
-
-                        <a class="btn btn-outline-primary w-100" asp-controller="AvailableDay" asp-action="Table">
-                            Browse Available Days
-                        </a>
-                    </form>
-                </div>
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title">Client Portal</h5>
+                <p class="card-text">View and book appointments.</p>
+                <a class="btn btn-primary mt-auto" asp-controller="Client" asp-action="Dashboard"
+                    asp-route-clientId="10">Go to Client (Ali)</a>
             </div>
         </div>
-
     </div>
-</section>
-
-@section Scripts {
-    <script>
-        // Carousel settings + simple client-side validation
-        document.addEventListener('DOMContentLoaded', () => {
-            const el = document.querySelector('#homeCarousel');
-            if (el && window.bootstrap) {
-                const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-                bootstrap.Carousel.getOrCreateInstance(el, {
-                    interval: prefersReduced.matches ? false : 5000,
-                    pause: prefersReduced.matches ? true : 'hover',
-                    ride: prefersReduced.matches ? false : 'carousel',
-                    touch: true, keyboard: true, wrap: true
-                });
-            }
-            // Bootstrap validation
-            document.querySelectorAll('.needs-validation').forEach(form => {
-                form.addEventListener('submit', e => {
-                    if (!form.checkValidity()) { e.preventDefault(); e.stopPropagation(); }
-                    form.classList.add('was-validated');
-                }, false);
-            });
-        });
-    </script>
-}
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title">Personnel Portal</h5>
+                <p class="card-text">Create days (3 slots) and see bookings.</p>
+                <a class="btn btn-primary mt-auto" asp-controller="Personnel" asp-action="Dashboard"
+                    asp-route-personnelId="2">Go to Personnel (Nurse A)</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h5 class="card-title">Admin</h5>
+                <p class="card-text">Manage whole system.</p>
+                <a class="btn btn-outline-primary mt-auto" asp-controller="Admin" asp-action="Dashboard">Go to Admin</a>
+            </div>
+        </div>
+    </div>
+</div>
