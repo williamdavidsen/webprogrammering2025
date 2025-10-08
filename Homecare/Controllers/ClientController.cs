@@ -53,12 +53,19 @@ namespace Homecare.Controllers
         {
             ViewBag.ClientId = clientId;
 
-            // 1) Repository'den "free" günleri çek
-            var freeDays = await _slotRepo.GetFreeDaysAsync(); // HashSet’e alalım
-            var freeSet = freeDays.ToHashSet();
+            // 1) Boş slotu olan günleri al ve takvime ver
+            var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
+            ViewBag.FreeDays = freeDays
+                .Select(d => d.ToString("yyyy-MM-dd"))
+                .ToList();
 
-            // 2) Bugünden itibaren N gün gösterelim (pasif/aktif)
-            const int rangeDays = 14;
+            // (İsterseniz, takvimi bugünden değil ilk uygun günden başlatmak için:)
+            ViewBag.InitialMonth = (freeDays.Any() ? freeDays.Min() : DateOnly.FromDateTime(DateTime.Today))
+                .ToString("yyyy-MM-01");
+
+            // 2) (İsterseniz) Eski dropdown’lu görünüm için dayItems da kalsın
+            var freeSet = freeDays.ToHashSet();
+            const int rangeDays = 14; // sadece fallback senaryosu için
             var start = DateOnly.FromDateTime(DateTime.Today);
             var dayItems = Enumerable.Range(0, rangeDays)
                 .Select(i => start.AddDays(i))
@@ -66,13 +73,12 @@ namespace Homecare.Controllers
                 {
                     Text = d.ToString("yyyy-MM-dd dddd"),
                     Value = d.ToString("yyyy-MM-dd"),
-                    Disabled = !freeSet.Contains(d) // boş slot yoksa pasif
+                    Disabled = !freeSet.Contains(d)
                 })
                 .ToList();
-
             ViewBag.DayItems = dayItems;
 
-            // 3) Seçili güne göre slotları (boş olanları) dolduralım
+            // 3) Eğer querystring ile gün geldiyse, slotları doldur (eski görünüm için)
             if (!string.IsNullOrEmpty(day) && DateOnly.TryParse(day, out var sel))
             {
                 var slots = await _slotRepo.GetFreeSlotsByDayAsync(sel);
@@ -89,9 +95,9 @@ namespace Homecare.Controllers
 
             // 4) Görevler
             ViewBag.TaskOptions = new MultiSelectList(
-                await _taskRepo.GetAllAsync(), "CareTaskId", "Description");
+                await _taskRepo.GetAllAsync(), "CareTaskId", "Description"
+            );
 
-            // Form model
             return View(new Appointment
             {
                 ClientId = clientId,

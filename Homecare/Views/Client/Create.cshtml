@@ -1,106 +1,340 @@
 @using Homecare.Models
-@model Appointment
-@{
-    ViewData["Title"] = "Book Appointment";
+@using Microsoft.AspNetCore.Mvc.Rendering
+@using System.Text.Json
 
-    var clientId = (int)ViewBag.ClientId;
-    var dayItems = ViewBag.DayItems as List<SelectListItem> ?? new();
-    var slotItems = ViewBag.SlotItems as List<SelectListItem> ?? new();
+@model Appointment
+
+@{
+    ViewData["Title"] = "Book Appointment (Client)";
+
+    var clientId = (int)(ViewBag.ClientId ?? 0);
     var taskOptions = ViewBag.TaskOptions as MultiSelectList;
+
+    // Controller'da: ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+    // burada JSON'a gömüyoruz
+    var freeDaysJson = System.Text.Json.JsonSerializer.Serialize(
+    (IEnumerable<string>)(ViewBag.FreeDays ?? new List<string>())
+    );
 }
 
-<h2 class="mb-3">Book Appointment</h2>
-<partial name="~/Views/Shared/_Message.cshtml" />
+@section Styles {
+    <style>
+        /* Basit takvim stilleri (Bootstrap ile uyumlu) */
+        .cal-wrapper {
+            border: 1px solid #e9ecef;
+            border-radius: 1rem;
+        }
 
-<form asp-action="Create" method="post" class="card p-3">
-    @Html.AntiForgeryToken()
-    <input type="hidden" asp-for="ClientId" />
+        .cal-header {
+            padding: .75rem 1rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-    <div class="row g-3">
-        <div class="col-md-6">
-            <label class="form-label">Day</label>
-            <select id="daySelect" class="form-select">
-                <option value="">Select a day...</option>
-                @foreach (var it in dayItems)
-                {
-                    <option value="@it.Value" disabled="@(it.Disabled ? "disabled" : null)">
-                        @it.Text
-                    </option>
-                }
-            </select>
-            <div class="form-text">Boş slotu olmayan günler pasiftir.</div>
-        </div>
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: .25rem;
+            padding: .75rem;
+        }
 
-        <div class="col-md-6">
-            <label asp-for="AvailableSlotId" class="form-label">Slot</label>
-            <select asp-for="AvailableSlotId" class="form-select" id="slotSelect">
-                <option value="">Önce gün seçiniz</option>
-                @foreach (var s in slotItems)
-                {
-                    <option value="@s.Value">@s.Text</option>
-                }
-            </select>
-            <span asp-validation-for="AvailableSlotId" class="text-danger"></span>
-        </div>
+        .cal-cell {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: .5rem;
+            font-weight: 500;
+            cursor: default;
+        }
 
-        <div class="col-12">
-            <label class="form-label">Requested Tasks</label>
-            <select name="selectedTaskIds" multiple class="form-select">
-                @if (taskOptions != null)
-                {
-                    foreach (var item in taskOptions)
-                    {
-                        <option value="@item.Value">@item.Text</option>
-                    }
-                }
-            </select>
-            <div class="form-text">Birden fazla görev seçebilirsiniz.</div>
-        </div>
+        .cal-dow {
+            font-size: .8rem;
+            color: #6c757d;
+            font-weight: 600;
+        }
 
-        <div class="col-12">
-            <label asp-for="Description" class="form-label">Notes</label>
-            <textarea asp-for="Description" class="form-control" rows="3"></textarea>
-        </div>
+        .cal-day {
+            background-color: #f8f9fa;
+            cursor: pointer;
+        }
+
+        .cal-day.disabled {
+            background: #fff;
+            color: #adb5bd;
+            cursor: not-allowed;
+            border: 1px dashed #e9ecef;
+        }
+
+        .cal-day.available {
+            background: #e9f7ef;
+            color: #198754;
+            border: 1px solid #bce3cf;
+        }
+
+        .cal-day.selected {
+            outline: 3px solid #0d6efd;
+            background: #e7f1ff;
+            color: #0d6efd;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: .35rem;
+            vertical-align: middle;
+        }
+
+        .legend-yes {
+            background: #198754;
+        }
+
+        .legend-no {
+            background: #adb5bd;
+        }
+
+        .slot-btn {
+            border-radius: .6rem;
+        }
+
+        .slot-btn.active {
+            outline: 3px solid #0d6efd;
+            background: #e7f1ff;
+        }
+    </style>
+}
+
+<div class="container py-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h4 mb-0">New Appointment</h2>
+        <a asp-controller="Client" asp-action="Dashboard" asp-route-clientId="@clientId"
+            class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
     </div>
 
-    <div class="mt-3 d-flex gap-2">
-        <button type="submit" class="btn btn-primary">Book</button>
-        <a asp-action="Dashboard" asp-route-clientId="@clientId" class="btn btn-outline-secondary">Cancel</a>
-    </div>
-</form>
+    <partial name="~/Views/Shared/_Message.cshtml" />
+
+    <form asp-action="Create" method="post" class="row g-4">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="ClientId" value="@clientId" />
+        <input type="hidden" asp-for="AvailableSlotId" id="AvailableSlotId" />
+
+        <!-- Sol: Takvim -->
+        <div class="col-lg-7">
+            <div class="cal-wrapper rounded-4">
+                <div class="cal-header">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrevMonth">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <div class="fw-semibold" id="calTitle">Month YYYY</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNextMonth">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+
+                <!-- Day-of-week -->
+                <div class="cal-grid">
+                    <div class="cal-cell cal-dow">Mo</div>
+                    <div class="cal-cell cal-dow">Tu</div>
+                    <div class="cal-cell cal-dow">We</div>
+                    <div class="cal-cell cal-dow">Th</div>
+                    <div class="cal-cell cal-dow">Fr</div>
+                    <div class="cal-cell cal-dow">Sa</div>
+                    <div class="cal-cell cal-dow">Su</div>
+                </div>
+
+                <!-- Günler -->
+                <div class="cal-grid" id="calDays"></div>
+
+                <div class="px-3 pb-3">
+                    <small class="text-muted">
+                        <span class="legend-dot legend-yes"></span>Selectable (has free slots) &nbsp;·&nbsp;
+                        <span class="legend-dot legend-no"></span>Unavailable (no slots)
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sağ: Slotlar + Task + Not -->
+        <div class="col-lg-5">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Available Time Slots</h5>
+                    <div id="slotList" class="d-grid gap-2">
+                        <div class="text-muted">Pick a day to see its free slots.</div>
+                    </div>
+                    <div class="form-text mt-2">Click a slot to select. Seçtiğin slot mavileşir.</div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Requested Tasks</h5>
+                    <select name="selectedTaskIds" multiple class="form-select">
+                        @if (taskOptions != null)
+                        {
+                            foreach (var item in taskOptions)
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        }
+                    </select>
+                    <div class="form-text">Birden fazla görev seçebilirsin.</div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <label asp-for="Description" class="form-label">Notes</label>
+                    <textarea asp-for="Description" rows="3" class="form-control"></textarea>
+                    <span asp-validation-for="Description" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Book</button>
+                <a asp-controller="Client" asp-action="Dashboard" asp-route-clientId="@clientId"
+                    class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </div>
+    </form>
+</div>
 
 @section Scripts {
     <script>
-        const daySelect = document.getElementById('daySelect');
-        const slotSelect = document.getElementById('slotSelect');
+        // Controller'dan gelen boş günler (yyyy-MM-dd)
+        const FREE_DAYS = new Set(@Html.Raw(freeDaysJson));
 
-        daySelect.addEventListener('change', async function () {
-            const day = this.value;
-            slotSelect.innerHTML = '<option value="">Loading...</option>';
+        // Seçili gün & ay bilgisi
+        let current = new Date();      // calendar gösterimi
+        let selectedDayStr = null;     // yyyy-MM-dd
+        let selectedSlotId = null;
 
-            if (!day) {
-                slotSelect.innerHTML = '<option value="">Önce gün seçiniz</option>';
-                return;
+        const calTitle = document.getElementById('calTitle');
+        const calDays = document.getElementById('calDays');
+        const btnPrev = document.getElementById('btnPrevMonth');
+        const btnNext = document.getElementById('btnNextMonth');
+        const slotList = document.getElementById('slotList');
+        const slotInput = document.getElementById('AvailableSlotId');
+
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        function ymd(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+
+        function renderCalendar() {
+            // Başlık
+            const monthName = current.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+            calTitle.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+            // grid'i temizle
+            calDays.innerHTML = '';
+
+            // Ay bilgileri
+            const y = current.getFullYear();
+            const m = current.getMonth(); // 0..11
+            const first = new Date(y, m, 1);
+            const last = new Date(y, m + 1, 0);
+            const daysInMonth = last.getDate();
+
+            // ISO haftaya göre: Pazartesi=1, ... Pazar=7 (biz gridte Mo..Su sırasındayız)
+            let startOffset = first.getDay(); // 0=Sun .. 6=Sat
+            if (startOffset === 0) startOffset = 7; // Pazar -> 7
+            const blanks = startOffset - 1;
+
+            // boş kutular
+            for (let i = 0; i < blanks; i++) {
+                const div = document.createElement('div');
+                div.className = 'cal-cell';
+                calDays.appendChild(div);
             }
 
-            try {
-                const res = await fetch(`/Client/SlotsForDay?day=${encodeURIComponent(day)}`);
-                const slots = await res.json();
+            // ay günleri
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(y, m, d);
+                const dayStr = ymd(date);
+                const div = document.createElement('div');
+                div.className = 'cal-cell cal-day';
+                div.textContent = d;
 
-                if (!slots || slots.length === 0) {
-                    slotSelect.innerHTML = '<option value="">Bu gün için boş slot yok</option>';
+                // free / disabled
+                if (FREE_DAYS.has(dayStr)) {
+                    div.classList.add('available');
+                    div.title = 'Available';
+                    div.addEventListener('click', () => selectDay(dayStr, div));
+                } else {
+                    div.classList.add('disabled');
+                    div.title = 'No free slots';
+                }
+
+                // seçiliyse
+                if (selectedDayStr === dayStr) {
+                    div.classList.add('selected');
+                }
+
+                calDays.appendChild(div);
+            }
+        }
+
+        function clearSelectedDayVisual() {
+            calDays.querySelectorAll('.cal-day.selected').forEach(el => el.classList.remove('selected'));
+        }
+
+        async function selectDay(dayStr, cellEl) {
+            // UI
+            clearSelectedDayVisual();
+            cellEl.classList.add('selected');
+            selectedDayStr = dayStr;
+
+            // Slot'ları çek
+            slotList.innerHTML = '<div class="text-muted">Loading...</div>';
+            selectedSlotId = null;
+            slotInput.value = '';
+
+            try {
+                const res = await fetch(`/Client/SlotsForDay?day=${encodeURIComponent(dayStr)}`);
+                const data = await res.json(); // [{id, label}, ...]
+
+                if (!data || data.length === 0) {
+                    slotList.innerHTML = '<div class="text-muted">No free slot for this day.</div>';
                     return;
                 }
 
-                slotSelect.innerHTML = '';
-                for (const s of slots) {
-                    const opt = document.createElement('option');
-                    opt.value = s.id;
-                    opt.textContent = s.label;
-                    slotSelect.appendChild(opt);
-                }
+                // Butonlar
+                slotList.innerHTML = '';
+                data.forEach(s => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn btn-outline-secondary slot-btn';
+                    btn.textContent = s.label;
+                    btn.addEventListener('click', () => {
+                        // tek seçim
+                        slotList.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        selectedSlotId = s.id;
+                        slotInput.value = s.id;
+                    });
+                    slotList.appendChild(btn);
+                });
             } catch (e) {
-                slotSelect.innerHTML = '<option value="">Hata oluştu</option>';
+                slotList.innerHTML = '<div class="text-danger">Error loading slots.</div>';
+            }
+        }
+
+        btnPrev.addEventListener('click', () => { current.setMonth(current.getMonth() - 1); renderCalendar(); });
+        btnNext.addEventListener('click', () => { current.setMonth(current.getMonth() + 1); renderCalendar(); });
+
+        // İlk render
+        renderCalendar();
+
+        // Form submit'te slot seçilmemişse uyar
+        document.forms[0].addEventListener('submit', (e) => {
+            if (!slotInput.value) {
+                e.preventDefault();
+                alert('Please select a time slot.');
             }
         });
     </script>
