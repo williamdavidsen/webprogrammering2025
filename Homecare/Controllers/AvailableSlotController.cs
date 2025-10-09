@@ -65,13 +65,15 @@ namespace Homecare.Controllers
         // EDIT GET
         public async Task<IActionResult> Edit(int id)
         {
-            var s = await _slotRepo.GetAsync(id);
-            if (s == null) return NotFound();
+            var a = await _apptRepo.GetAsync(id);
+            if (a == null) return NotFound();
 
-            var personnels = await _userRepo.GetByRoleAsync(UserRole.Personnel);
-            ViewBag.PersonnelList = new SelectList(personnels, "UserId", "Name", s.PersonnelId);
+            var u = await _userRepo.GetAsync(a.ClientId);
+            ViewBag.OwnerName = u?.Name ?? $"Client #{a.ClientId}";
+            ViewBag.OwnerRole = "Client";
+            ViewBag.OwnerExtra = $"Appt #{id}";
 
-            return View(s);
+            return View(a);
         }
 
         // EDIT POST

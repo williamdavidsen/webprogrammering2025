@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace Homecare.Controllers
 {
+    [Route("Client")]
     public class ClientController : Controller
     {
         private readonly IAppointmentRepository _apptRepo;
@@ -24,21 +25,43 @@ namespace Homecare.Controllers
             _taskRepo = taskRepo;
         }
 
-        // ----------------- DASHBOARD (değişmeden kalabilir) -----------------
+        // ---- Helper: clientId yoksa ilk müşteriyi bul ----
+        private async Task<int> ResolveClientId(int? clientId)
+        {
+            if (clientId.HasValue) return clientId.Value;
+            var first = (await _userRepo.GetByRoleAsync(UserRole.Client)).FirstOrDefault();
+            if (first == null) throw new InvalidOperationException("No client exists in the system.");
+            return first.UserId;
+        }
+
+        private async Task SetOwnerForClientAsync(int clientId)
+        {
+            var u = await _userRepo.GetAsync(clientId);
+            ViewBag.OwnerName = u?.Name ?? $"Client #{clientId}";
+            ViewBag.OwnerRole = "Client";
+        }
+
+        // ----------------- DASHBOARD -----------------
+        // /Client/Dashboard  veya  /Client/Dashboard/10
+        [HttpGet("Dashboard/{clientId:int?}")]
         public async Task<IActionResult> Dashboard(int? clientId)
         {
-            int id = clientId ?? (await _userRepo.GetByRoleAsync(UserRole.Client)).First().UserId;
+            int id = await ResolveClientId(clientId);
+            await SetOwnerForClientAsync(id);
+
             var list = await _apptRepo.GetByClientAsync(id);
             var now = DateTime.Now;
 
             var upcoming = list.Where(a => a.AvailableSlot != null &&
                                            a.AvailableSlot.Day.ToDateTime(a.AvailableSlot.EndTime) >= now)
-                               .OrderBy(a => a.AvailableSlot!.Day).ThenBy(a => a.AvailableSlot!.StartTime)
+                               .OrderBy(a => a.AvailableSlot!.Day)
+                               .ThenBy(a => a.AvailableSlot!.StartTime)
                                .ToList();
 
             var past = list.Where(a => a.AvailableSlot != null &&
                                        a.AvailableSlot.Day.ToDateTime(a.AvailableSlot.EndTime) < now)
-                           .OrderByDescending(a => a.AvailableSlot!.Day).ThenByDescending(a => a.AvailableSlot!.StartTime)
+                           .OrderByDescending(a => a.AvailableSlot!.Day)
+                           .ThenByDescending(a => a.AvailableSlot!.StartTime)
                            .ToList();
 
             ViewBag.ClientId = id;
@@ -48,24 +71,27 @@ namespace Homecare.Controllers
         }
 
         // ----------------- CREATE (GET) -----------------
-        [HttpGet]
+        // /Client/Create/10   (day querystring ile gelebilir)
+        [HttpGet("Create/{clientId:int}")]
         public async Task<IActionResult> Create(int clientId, string? day = null)
         {
+            await SetOwnerForClientAsync(clientId);
             ViewBag.ClientId = clientId;
 
-            // 1) Boş slotu olan günleri al ve takvime ver
+            // 1) Boş slotu olan günleri takvime ver
             var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
             ViewBag.FreeDays = freeDays
                 .Select(d => d.ToString("yyyy-MM-dd"))
                 .ToList();
 
-            // (İsterseniz, takvimi bugünden değil ilk uygun günden başlatmak için:)
-            ViewBag.InitialMonth = (freeDays.Any() ? freeDays.Min() : DateOnly.FromDateTime(DateTime.Today))
+            ViewBag.InitialMonth = (freeDays.Any()
+                    ? freeDays.Min()
+                    : DateOnly.FromDateTime(DateTime.Today))
                 .ToString("yyyy-MM-01");
 
-            // 2) (İsterseniz) Eski dropdown’lu görünüm için dayItems da kalsın
+            // 2) Eski dropdown fallback (opsiyonel)
             var freeSet = freeDays.ToHashSet();
-            const int rangeDays = 14; // sadece fallback senaryosu için
+            const int rangeDays = 14;
             var start = DateOnly.FromDateTime(DateTime.Today);
             var dayItems = Enumerable.Range(0, rangeDays)
                 .Select(i => start.AddDays(i))
@@ -78,7 +104,6 @@ namespace Homecare.Controllers
                 .ToList();
             ViewBag.DayItems = dayItems;
 
-            // 3) Eğer querystring ile gün geldiyse, slotları doldur (eski görünüm için)
             if (!string.IsNullOrEmpty(day) && DateOnly.TryParse(day, out var sel))
             {
                 var slots = await _slotRepo.GetFreeSlotsByDayAsync(sel);
@@ -93,7 +118,7 @@ namespace Homecare.Controllers
                 ViewBag.SlotItems = new List<SelectListItem>();
             }
 
-            // 4) Görevler
+            // 3) Görevler
             ViewBag.TaskOptions = new MultiSelectList(
                 await _taskRepo.GetAllAsync(), "CareTaskId", "Description"
             );
@@ -106,7 +131,7 @@ namespace Homecare.Controllers
         }
 
         // ----------------- CREATE (POST) -----------------
-        [HttpPost, ValidateAntiForgeryToken]
+        [HttpPost("Create"), ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(Appointment model, int[] selectedTaskIds)
         {
             if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId))
@@ -115,18 +140,17 @@ namespace Homecare.Controllers
             }
             if (!ModelState.IsValid)
             {
-                // tekrar doldur
                 return await RefillCreateForm(model, selectedTaskIds);
             }
 
             await _apptRepo.AddAsync(model);
-            // (TaskList ekleme adımı ileride; MVP için randevu oluşturmak yeterli)
             TempData["Message"] = "Appointment booked.";
             return RedirectToAction(nameof(Dashboard), new { clientId = model.ClientId });
         }
 
         private async Task<IActionResult> RefillCreateForm(Appointment model, int[] selectedTaskIds)
         {
+            await SetOwnerForClientAsync(model.ClientId);
             ViewBag.ClientId = model.ClientId;
 
             var freeDays = await _slotRepo.GetFreeDaysAsync();
@@ -151,7 +175,8 @@ namespace Homecare.Controllers
         }
 
         // ----------------- AJAX: seçilen günün boş slotlarını getir -----------------
-        [HttpGet]
+        // /Client/SlotsForDay?day=2025-10-21
+        [HttpGet("SlotsForDay")]
         public async Task<IActionResult> SlotsForDay(string day)
         {
             if (!DateOnly.TryParse(day, out var d))

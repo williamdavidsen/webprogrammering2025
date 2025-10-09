@@ -24,7 +24,9 @@ namespace Homecare.Controllers
         public async Task<IActionResult> Dashboard(int? personnelId)
         {
             int id = personnelId ?? (await _userRepo.GetByRoleAsync(UserRole.Personnel)).First().UserId;
+            await SetOwnerForPersonnelAsync(id);
             var list = await _apptRepo.GetByPersonnelAsync(id);
+
             var now = DateTime.Now;
 
             var upcoming = list.Where(a => a.AvailableSlot!.Day.ToDateTime(a.AvailableSlot!.EndTime) >= now)
@@ -41,6 +43,12 @@ namespace Homecare.Controllers
             ViewBag.Upcoming = upcoming;
             ViewBag.Past = past;
             return View();
+        }
+        private async Task SetOwnerForPersonnelAsync(int personnelId)
+        {
+            var u = await _userRepo.GetAsync(personnelId);
+            ViewBag.OwnerName = u?.Name ?? $"Personnel #{personnelId}";
+            ViewBag.OwnerRole = "Personnel";
         }
 
         // Gün seçimi (takvim)

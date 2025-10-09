@@ -24,6 +24,8 @@ namespace Homecare.Controllers
         // /Admin/Dashboard
         public async Task<IActionResult> Dashboard()
         {
+            ViewBag.OwnerName = User?.Identity?.Name ?? "Administrator";
+            ViewBag.OwnerRole = "Admin";
             // 1) Sayılar (özet)
             var clients = await _userRepo.GetByRoleAsync(UserRole.Client);
             var personnels = await _userRepo.GetByRoleAsync(UserRole.Personnel);
