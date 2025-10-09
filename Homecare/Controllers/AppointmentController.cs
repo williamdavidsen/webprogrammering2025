@@ -12,7 +12,11 @@ namespace Homecare.Controllers
         private readonly IUserRepository _userRepo;
 
         public AppointmentController(IAppointmentRepository apptRepo, IAvailableSlotRepository slotRepo, IUserRepository userRepo)
-        { _apptRepo = apptRepo; _slotRepo = slotRepo; _userRepo = userRepo; }
+        {
+            _apptRepo = apptRepo;
+            _slotRepo = slotRepo;
+            _userRepo = userRepo;
+        }
 
         // LIST
         public async Task<IActionResult> Table() => View(await _apptRepo.GetAllAsync());
@@ -64,24 +68,34 @@ namespace Homecare.Controllers
             return RedirectToAction(nameof(Table));
         }
 
-        // EDIT GET
+        // EDIT GET  ✅ FreeDays eklendi
         public async Task<IActionResult> Edit(int id)
         {
             var a = await _apptRepo.GetAsync(id);
             if (a == null) return NotFound();
+
+            // (Eski görünümde client dropdown vardı; görünüm artık hidden kullanıyor ama aşağıdaki satır kalsa da zarar vermez)
             ViewBag.Clients = new SelectList(await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name", a.ClientId);
-            // İstersen boş slot listesi de verilebilir (slot değişimi için)
+
+            // Takvim için boş günler (ClientController.Create ile aynı mantık)
+            var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
+            ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+
             return View(a);
         }
 
-        // EDIT POST
+        // EDIT POST  ✅ Hata dönüşünde FreeDays yenile
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(Appointment model)
         {
             if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId, model.AppointmentId))
             {
                 ModelState.AddModelError(nameof(model.AvailableSlotId), "This slot is already booked.");
+
                 ViewBag.Clients = new SelectList(await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name", model.ClientId);
+                var freeDaysRetry = await _slotRepo.GetFreeDaysAsync();
+                ViewBag.FreeDays = freeDaysRetry.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+
                 return View(model);
             }
 

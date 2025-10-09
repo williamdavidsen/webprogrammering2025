@@ -41,6 +41,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseStaticFiles();
+app.UseAuthentication();
 
 // Basit default route
 app.MapDefaultControllerRoute();
