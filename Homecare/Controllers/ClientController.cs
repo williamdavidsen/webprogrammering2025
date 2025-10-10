@@ -1,5 +1,6 @@
 using Homecare.DAL.Interfaces;
 using Homecare.Models;
+using Homecare.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
@@ -78,31 +79,24 @@ namespace Homecare.Controllers
             await SetOwnerForClientAsync(clientId);
             ViewBag.ClientId = clientId;
 
-            // 1) Boş slotu olan günleri takvime ver
+            // 1) Takvim için boş (free) günleri ver
             var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
-            ViewBag.FreeDays = freeDays
-                .Select(d => d.ToString("yyyy-MM-dd"))
-                .ToList();
+            ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+            ViewBag.InitialMonth = (freeDays.Any() ? freeDays.Min() : DateOnly.FromDateTime(DateTime.Today))
+                                    .ToString("yyyy-MM-01");
 
-            ViewBag.InitialMonth = (freeDays.Any()
-                    ? freeDays.Min()
-                    : DateOnly.FromDateTime(DateTime.Today))
-                .ToString("yyyy-MM-01");
-
-            // 2) Eski dropdown fallback (opsiyonel)
+            // (Opsiyonel) Eski dropdown fallback’ı bırakmak istersen:
             var freeSet = freeDays.ToHashSet();
             const int rangeDays = 14;
             var start = DateOnly.FromDateTime(DateTime.Today);
-            var dayItems = Enumerable.Range(0, rangeDays)
+            ViewBag.DayItems = Enumerable.Range(0, rangeDays)
                 .Select(i => start.AddDays(i))
                 .Select(d => new SelectListItem
                 {
                     Text = d.ToString("yyyy-MM-dd dddd"),
                     Value = d.ToString("yyyy-MM-dd"),
                     Disabled = !freeSet.Contains(d)
-                })
-                .ToList();
-            ViewBag.DayItems = dayItems;
+                }).ToList();
 
             if (!string.IsNullOrEmpty(day) && DateOnly.TryParse(day, out var sel))
             {
@@ -118,71 +112,86 @@ namespace Homecare.Controllers
                 ViewBag.SlotItems = new List<SelectListItem>();
             }
 
-            // 3) Görevler
-            ViewBag.TaskOptions = new MultiSelectList(
-                await _taskRepo.GetAllAsync(), "CareTaskId", "Description"
-            );
+            // 2) Dropdown (tek seçim) için görevler
+            var tasks = await _taskRepo.GetAllAsync();
+            var vm = new AppointmentCreateViewModel
+            {
+                Appointment = new Appointment
+                {
+                    ClientId = clientId,
+                    Status = AppointmentStatus.Scheduled
+                },
+                TaskSelectList = tasks
+                    .Select(t => new SelectListItem { Value = t.CareTaskId.ToString(), Text = t.Description })
+                    .ToList()
+            };
 
-            return View(new Appointment { ClientId = clientId, Status = AppointmentStatus.Scheduled });
+            return View(vm);
         }
+
 
         // ----------------- CREATE (POST) -----------------
         // /Client/Create/{clientId}  → POST
         [HttpPost("Create/{clientId:int}"), ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(
-            int clientId,
-            [FromForm] Appointment model,
-            [FromForm] int[]? selectedTaskIds)
+        public async Task<IActionResult> Create(int clientId, AppointmentCreateViewModel vm)
         {
-            // Route'tan gelen id’yi modele yaz
-            model.ClientId = clientId;
+            // Route’tan gelen id’yi güvence altına al
+            vm.Appointment.ClientId = clientId;
 
             // Slot halen uygun mu?
-            if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId))
-                ModelState.AddModelError(nameof(model.AvailableSlotId), "Selected slot is no longer available.");
+            if (await _apptRepo.SlotIsBookedAsync(vm.Appointment.AvailableSlotId))
+                ModelState.AddModelError(nameof(vm.Appointment.AvailableSlotId),
+                                         "Selected slot is no longer available.");
 
             if (!ModelState.IsValid)
-                return await RefillCreateForm(model, selectedTaskIds ?? Array.Empty<int>());
+                return await RefillCreateFormVM(clientId, vm);
 
-            await _apptRepo.AddAsync(model);
+            await _apptRepo.AddAsync(vm.Appointment);
 
-            // (İleride: selectedTaskIds için TaskList ekleme burada yapılır)
-            if (TempData != null)
-                TempData["Message"] = "Appointment booked.";
+            // (İsteğe bağlı) Seçili tek görevi kaydetmek istersen burada ekleyebilirsin:
+            // if (vm.SelectedTaskId.HasValue)
+            //     await _apptRepo.AddTaskAsync(vm.Appointment.AppointmentId, vm.SelectedTaskId.Value);
+
+            TempData["Message"] = "Appointment booked.";
             return RedirectToAction(nameof(Dashboard), new { clientId });
         }
 
 
-        private async Task<IActionResult> RefillCreateForm(Appointment model, int[] selectedTaskIds)
+
+        private async Task<IActionResult> RefillCreateFormVM(int clientId, AppointmentCreateViewModel vm)
         {
-            await SetOwnerForClientAsync(model.ClientId);
-            ViewBag.ClientId = model.ClientId;
+            ViewBag.ClientId = clientId;
 
-            var freeDays = await _slotRepo.GetFreeDaysAsync() ?? new List<DateOnly>();
+            var freeDays = await _slotRepo.GetFreeDaysAsync();
+            ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+            ViewBag.InitialMonth = (freeDays.Any() ? freeDays.Min() : DateOnly.FromDateTime(DateTime.Today))
+                                    .ToString("yyyy-MM-01");
+
             var freeSet = freeDays.ToHashSet();
-
             const int rangeDays = 14;
             var start = DateOnly.FromDateTime(DateTime.Today);
             ViewBag.DayItems = Enumerable.Range(0, rangeDays)
-         .Select(i => start.AddDays(i))
-         .Select(d => new SelectListItem
-         {
-             Text = d.ToString("yyyy-MM-dd dddd"),
-             Value = d.ToString("yyyy-MM-dd"),
-             Disabled = !freeSet.Contains(d)
-         })
-         .ToList();
+                .Select(i => start.AddDays(i))
+                .Select(d => new SelectListItem
+                {
+                    Text = d.ToString("yyyy-MM-dd dddd"),
+                    Value = d.ToString("yyyy-MM-dd"),
+                    Disabled = !freeSet.Contains(d)
+                }).ToList();
 
-            ViewBag.SlotItems = new List<SelectListItem>();
-            var selected = selectedTaskIds ?? Enumerable.Empty<int>();
-            ViewBag.TaskOptions = new MultiSelectList(
-        await _taskRepo.GetAllAsync() ?? new List<CareTask>(),
-        "CareTaskId", "Description",
-        selected
-    );
+            // Görev dropdown’ını tekrar doldur
+            var tasks = await _taskRepo.GetAllAsync();
+            vm.TaskSelectList = tasks.Select(t => new SelectListItem
+            {
+                Value = t.CareTaskId.ToString(),
+                Text = t.Description,
+                Selected = vm.SelectedTaskId.HasValue && vm.SelectedTaskId.Value == t.CareTaskId
+            }).ToList();
 
-            return View("Create", model);
+            return View("Create", vm);
         }
+
+
 
         // ----------------- AJAX: seçilen günün boş slotlarını getir -----------------
         // /Client/SlotsForDay?day=2025-10-21

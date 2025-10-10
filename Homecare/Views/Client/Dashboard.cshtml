@@ -2,7 +2,9 @@
 @{
     ViewData["Title"] = "Appointments";
 
-    var clientId = (int)(ViewBag.ClientId ?? 0);
+    // ViewBag.ClientId güvenli okuma
+    int clientId = ViewBag.ClientId is int v ? v : 0;
+
     var upcoming = ViewBag.Upcoming as IEnumerable<Appointment> ?? Enumerable.Empty<Appointment>();
     var past = ViewBag.Past as IEnumerable<Appointment> ?? Enumerable.Empty<Appointment>();
 
@@ -76,23 +78,21 @@
     {
         foreach (var a in upcoming)
         {
-            <div class="card cd-card mb-3 js-link-card clickable-card"
-                data-href="@Url.Action("Details", "Appointment", new { id = a.AppointmentId })">
-                <div class="row g-4 align-items-start">
-                    <div class="col-md-8 d-flex flex-column">
-                        <div class="chip text-primary fw-semibold mb-1">Upcoming</div>
-                        <h5 class="mb-1">@Personnel(a)</h5>
-                        <div class="text-muted">@DayLabel(a) · @TimeLabel(a)</div>
+            <div class="card cd-card mb-3 js-link-card clickable-card" data-href="@Url.Action("Details","Appointment",
+                                                                                                new { id = a.AppointmentId, backTo = "client", ownerId = clientId })">
+        <div class="row g-4 align-items-start">
+            <div class="col-md-8 d-flex flex-column">
+                <div class="chip text-primary fw-semibold mb-1">Upcoming</div>
+                <h5 class="mb-1">@Personnel(a)</h5>
+                <div class="text-muted">@DayLabel(a) · @TimeLabel(a)</div>
 
-                        @if (a.Tasks != null && a.Tasks.Any())
+                @if (a.Tasks != null && a.Tasks.Any())
                         {
                             <div class="mt-2 small text-secondary">
                                 Tasks:
                                 @string.Join(", ",
-                                a.Tasks
-                                .Select(t => t.CareTask?.Description)
-                                .Where(s => !string.IsNullOrWhiteSpace(s))!
-                                        )
+                                a.Tasks.Select(t => t.CareTask?.Description)
+                                .Where(s => !string.IsNullOrWhiteSpace(s))!)
                 </div>
                                 }
 
@@ -138,23 +138,21 @@
             ? Url.Content("~/images/dash-past-1.jpg")
             : Url.Content("~/images/dash-past-2.jpg");
 
-            <div class="card cd-card opacity-75 mb-3 js-link-card clickable-card"
-                data-href="@Url.Action("Details", "Appointment", new { id = a.AppointmentId })">
-                <div class="row g-4 align-items-start">
-                    <div class="col-md-8 d-flex flex-column">
-                        <div class="chip text-secondary mb-1">Completed</div>
-                        <h5 class="mb-1">@Personnel(a)</h5>
-                        <div class="text-muted">@DayLabel(a) · @TimeLabel(a)</div>
+            <div class="card cd-card opacity-75 mb-3 js-link-card clickable-card" data-href="@Url.Action("Details","Appointment",
+                                                                                                           new { id = a.AppointmentId, backTo = "client", ownerId = clientId })">
+        <div class="row g-4 align-items-start">
+            <div class="col-md-8 d-flex flex-column">
+                <div class="chip text-secondary mb-1">Completed</div>
+                <h5 class="mb-1">@Personnel(a)</h5>
+                <div class="text-muted">@DayLabel(a) · @TimeLabel(a)</div>
 
-                        @if (a.Tasks != null && a.Tasks.Any())
+                @if (a.Tasks != null && a.Tasks.Any())
                         {
                             <div class="mt-2 small text-secondary">
                                 Tasks:
                                 @string.Join(", ",
-                                a.Tasks
-                                .Select(t => t.CareTask?.Description)
-                                .Where(s => !string.IsNullOrWhiteSpace(s))!
-                                        )
+                                a.Tasks.Select(t => t.CareTask?.Description)
+                                .Where(s => !string.IsNullOrWhiteSpace(s))!)
                 </div>
                                 }
                     </div>
@@ -173,15 +171,14 @@
 
 @section Scripts {
     <script>
-        document.querySelectorAll('.js-link-card').forEach(function (card) {
-            card.addEventListener('click', function () {
+        document.querySelectorAll('.js-link-card').forEach(card => {
+            card.addEventListener('click', () => {
                 const href = card.getAttribute('data-href');
                 if (href) window.location.href = href;
             });
         });
-        // Kart içindeki eylem butonları kart tıklamasını tetiklemesin
-        document.querySelectorAll('.prevent-card-nav').forEach(function (el) {
-            el.addEventListener('click', function (e) { e.stopPropagation(); }, { capture: true });
+        document.querySelectorAll('.prevent-card-nav').forEach(el => {
+            el.addEventListener('click', e => e.stopPropagation(), { capture: true });
         });
     </script>
 }
