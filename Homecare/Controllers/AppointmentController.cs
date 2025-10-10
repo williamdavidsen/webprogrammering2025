@@ -1,3 +1,4 @@
+using AspNetCoreGeneratedDocument;
 using Homecare.DAL.Interfaces;
 using Homecare.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -101,7 +102,7 @@ namespace Homecare.Controllers
 
             await _apptRepo.UpdateAsync(model);
             TempData["Message"] = "Appointment updated.";
-            return RedirectToAction(nameof(Table));
+            return RedirectToAction(nameof(Edit));
         }
 
         // DELETE GET

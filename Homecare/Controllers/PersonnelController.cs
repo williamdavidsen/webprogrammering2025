@@ -25,19 +25,15 @@ namespace Homecare.Controllers
         {
             int id = personnelId ?? (await _userRepo.GetByRoleAsync(UserRole.Personnel)).First().UserId;
             await SetOwnerForPersonnelAsync(id);
-            var list = await _apptRepo.GetByPersonnelAsync(id);
 
+            var list = await _apptRepo.GetByPersonnelAsync(id);
             var now = DateTime.Now;
 
             var upcoming = list.Where(a => a.AvailableSlot!.Day.ToDateTime(a.AvailableSlot!.EndTime) >= now)
-                               .OrderBy(a => a.AvailableSlot!.Day)
-                               .ThenBy(a => a.AvailableSlot!.StartTime)
-                               .ToList();
+                               .OrderBy(a => a.AvailableSlot!.Day).ThenBy(a => a.AvailableSlot!.StartTime).ToList();
 
             var past = list.Where(a => a.AvailableSlot!.Day.ToDateTime(a.AvailableSlot!.EndTime) < now)
-                           .OrderByDescending(a => a.AvailableSlot!.Day)
-                           .ThenByDescending(a => a.AvailableSlot!.StartTime)
-                           .ToList();
+                           .OrderByDescending(a => a.AvailableSlot!.Day).ThenByDescending(a => a.AvailableSlot!.StartTime).ToList();
 
             ViewBag.PersonnelId = id;
             ViewBag.Upcoming = upcoming;
@@ -53,75 +49,96 @@ namespace Homecare.Controllers
 
         // Gün seçimi (takvim)
         [HttpGet]
-        public IActionResult CreateDay(int personnelId)
+        public async Task<IActionResult> CreateDay(int personnelId)
         {
+            await SetOwnerForPersonnelAsync(personnelId);
             ViewBag.PersonnelId = personnelId;
-            return View();
+
+            var from = DateOnly.FromDateTime(DateTime.Today);
+            var to = from.AddDays(42); // 6 hafta
+
+            // Takvim açıldığında mavi olsun (çalışacağı günler)
+            var selectedDays = await _slotRepo.GetWorkDaysAsync(personnelId, from, to);
+            // Üzerinde randevu olan günler (kaldırılamaz)
+            var lockedDays = await _slotRepo.GetLockedDaysAsync(personnelId, from, to);
+
+            ViewBag.SelectedDaysJson = System.Text.Json.JsonSerializer.Serialize(
+                selectedDays.Select(d => d.ToString("yyyy-MM-dd")));
+
+            ViewBag.LockedDaysJson = System.Text.Json.JsonSerializer.Serialize(
+                lockedDays.Select(d => d.ToString("yyyy-MM-dd")));
+
+            return View(); // CreateDay.cshtml
         }
 
-        // Tek gün (day) veya çoklu gün (days = "yyyy-MM-dd,yyyy-MM-dd,...")
+        // ----- CREATE DAY (POST) => Seçimi uygula -----
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> CreateDay(int personnelId, string? days, DateOnly? day)
+        public async Task<IActionResult> CreateDay(int personnelId, string days)
         {
-            // 1) Hedef günleri topla
-            var targetDays = new List<DateOnly>();
+            var from = DateOnly.FromDateTime(DateTime.Today);
+            var to = from.AddDays(42);
+
+            var existingDays = (await _slotRepo.GetWorkDaysAsync(personnelId, from, to)).ToHashSet();
+            var lockedDays = (await _slotRepo.GetLockedDaysAsync(personnelId, from, to)).ToHashSet();
+
+            var chosen = new HashSet<DateOnly>();
             if (!string.IsNullOrWhiteSpace(days))
             {
-                foreach (var token in days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                {
-                    if (DateOnly.TryParse(token, out var d))
-                        targetDays.Add(d);
-                }
-            }
-            else if (day.HasValue)
-            {
-                targetDays.Add(day.Value);
+                foreach (var s in days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    if (DateOnly.TryParse(s, out var d)) chosen.Add(d);
             }
 
-            if (targetDays.Count == 0)
-            {
-                TempData["Error"] = "Lütfen en az bir gün seçiniz.";
-                return RedirectToAction(nameof(CreateDay), new { personnelId });
-            }
+            // Ekleme / silme kümeleri
+            var toAdd = chosen.Except(existingDays).ToList();
+            var toRemove = existingDays.Except(chosen).ToList();
 
-            // 2) Basit şablon: 3 slot
-            var templates = new (TimeOnly Start, TimeOnly End)[]
+            // Randevusu olan günler kaldırılamaz
+            var blocked = toRemove.Where(d => lockedDays.Contains(d)).ToList();
+            var removable = toRemove.Where(d => !lockedDays.Contains(d)).ToList();
+
+            // 1) Eklenecek günler için 3 preset slot
+            var presets = new (TimeOnly Start, TimeOnly End)[]
             {
-                (new TimeOnly(9,  0), new TimeOnly(11, 0)),
-                (new TimeOnly(12, 0), new TimeOnly(14, 0)),
-                (new TimeOnly(16, 0), new TimeOnly(18, 0)),
+            (new TimeOnly(9,  0), new TimeOnly(11, 0)),
+            (new TimeOnly(12, 0), new TimeOnly(14, 0)),
+            (new TimeOnly(16, 0), new TimeOnly(18, 0))
             };
 
-            int created = 0;
-
-            // 3) Her gün için slotları ekle
-            foreach (var d in targetDays.Distinct())
+            var newSlots = new List<AvailableSlot>();
+            foreach (var day in toAdd)
             {
-                // Basit kontrol: o günde zaten bu personele ait boş slot var mı?
-                // (Not: Tümü doluysa bu kontrol "yok" döner. Tam katı kontrol istersen
-                // repo'da "Exists(personnelId, day, start)" gibi bir metod ekle.)
-                var existingFree = await _slotRepo.GetFreeSlotsByDayAsync(d);
-                if (existingFree.Any(s => s.PersonnelId == personnelId))
+                foreach (var p in presets)
                 {
-                    // Aynı güne bir daha eklemek istemiyorsan skip et
-                    continue;
+                    newSlots.Add(new AvailableSlot
+                    {
+                        PersonnelId = personnelId,
+                        Day = day,
+                        StartTime = p.Start,
+                        EndTime = p.End
+                    });
                 }
+            }
+            if (newSlots.Count > 0)
+                await _slotRepo.AddRangeAsync(newSlots);
 
-                var toAdd = templates.Select(t => new AvailableSlot
-                {
-                    PersonnelId = personnelId,
-                    Day = d,
-                    StartTime = t.Start,
-                    EndTime = t.End
-                });
-
-                await _slotRepo.AddRangeAsync(toAdd);
-                created += 3;
+            // 2) Randevusu olmayan günlerin slotlarını sil
+            foreach (var day in removable)
+            {
+                var slots = await _slotRepo.GetSlotsForPersonnelOnDayAsync(personnelId, day);
+                await _slotRepo.RemoveRangeAsync(slots);
             }
 
-            TempData["Message"] = created > 0
-                ? $"Availability saved. ({created} slot)"
-                : "Seçilen günlerin hepsi zaten ekli görünüyor.";
+            if (blocked.Any())
+            {
+                var msg = "Şu günlerde randevu olduğu için kaldırılamadı: " +
+                          string.Join(", ", blocked.Select(d => d.ToString("yyyy-MM-dd"))) +
+                          ". Lütfen yönetimle iletişime geçiniz.";
+                TempData["Error"] = msg;
+            }
+            else
+            {
+                TempData["Message"] = "Çalışma günleriniz güncellendi.";
+            }
 
             return RedirectToAction(nameof(Dashboard), new { personnelId });
         }

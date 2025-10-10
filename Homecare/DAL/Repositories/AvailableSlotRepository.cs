@@ -51,6 +51,43 @@ namespace Homecare.DAL.Repositories
             _db.AvailableSlots.Remove(slot);
             await _db.SaveChangesAsync();
         }
+        public async Task<List<DateOnly>> GetWorkDaysAsync(int personnelId, DateOnly from, DateOnly to)
+        {
+            return await _db.AvailableSlots
+                .Where(s => s.PersonnelId == personnelId &&
+                            s.Day >= from && s.Day <= to)
+                .Select(s => s.Day)
+                .Distinct()
+                .OrderBy(d => d)
+                .ToListAsync();
+        }
+
+        public async Task<List<DateOnly>> GetLockedDaysAsync(int personnelId, DateOnly from, DateOnly to)
+        {
+            return await _db.AvailableSlots
+                .Where(s => s.PersonnelId == personnelId &&
+                            s.Day >= from && s.Day <= to &&
+                            s.Appointment != null)
+                .Select(s => s.Day)
+                .Distinct()
+                .OrderBy(d => d)
+                .ToListAsync();
+        }
+
+        public async Task<List<AvailableSlot>> GetSlotsForPersonnelOnDayAsync(int personnelId, DateOnly day)
+        {
+            return await _db.AvailableSlots
+                .Where(s => s.PersonnelId == personnelId && s.Day == day)
+                .ToListAsync();
+        }
+
+
+
+        public async Task RemoveRangeAsync(IEnumerable<AvailableSlot> slots)
+        {
+            _db.AvailableSlots.RemoveRange(slots);
+            await _db.SaveChangesAsync();
+        }
 
         public Task<bool> ExistsAsync(int personnelId, DateOnly day, TimeOnly start, TimeOnly end) =>
             _db.AvailableSlots.AnyAsync(s => s.PersonnelId == personnelId && s.Day == day && s.StartTime == start && s.EndTime == end);

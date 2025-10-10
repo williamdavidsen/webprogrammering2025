@@ -123,29 +123,25 @@ namespace Homecare.Controllers
                 await _taskRepo.GetAllAsync(), "CareTaskId", "Description"
             );
 
-            return View(new Appointment
-            {
-                ClientId = clientId,
-                Status = AppointmentStatus.Scheduled
-            });
+            return View(new Appointment { ClientId = clientId, Status = AppointmentStatus.Scheduled });
         }
 
         // ----------------- CREATE (POST) -----------------
-        [HttpPost("Create"), ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(Appointment model, int[] selectedTaskIds)
+        [HttpPost("Create/{clientId:int}"), ValidateAntiForgeryToken]
+
+        public async Task<IActionResult> Createint(int clientId, Appointment model, int[] selectedTaskIds)
         {
+            model.ClientId = clientId;
+
             if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId))
-            {
                 ModelState.AddModelError(nameof(model.AvailableSlotId), "Selected slot is no longer available.");
-            }
+
             if (!ModelState.IsValid)
-            {
                 return await RefillCreateForm(model, selectedTaskIds);
-            }
 
             await _apptRepo.AddAsync(model);
             TempData["Message"] = "Appointment booked.";
-            return RedirectToAction(nameof(Dashboard), new { clientId = model.ClientId });
+            return RedirectToAction(nameof(Dashboard), new { clientId });
         }
 
         private async Task<IActionResult> RefillCreateForm(Appointment model, int[] selectedTaskIds)

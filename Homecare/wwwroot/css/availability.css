@@ -20,6 +20,9 @@
   font-weight: 700;
   font-size: 1.1rem;
 }
+.day.selected { background:#e7f1ff; border:1px solid #cde1ff; color:#0d6efd; }
+.day.locked   { background:#ffe5e5; border:1px solid #f3bcbc; color:#a40000; position:relative; }
+
 .cal-nav {
   width: 36px;
   height: 36px;
