@@ -6,7 +6,8 @@ namespace Homecare.DAL.Interfaces
     {
         Task<List<AvailableSlot>> GetAllAsync();
         Task<AvailableSlot?> GetAsync(int id);
-        Task<List<DateOnly>> GetFreeDaysAsync(DateOnly? from = null);
+        Task<List<DateOnly>> GetFreeDaysAsync(int rangeDays = 42);
+
         Task<List<AvailableSlot>> GetFreeSlotsByDayAsync(DateOnly day);
         Task AddAsync(AvailableSlot slot);
         Task AddRangeAsync(IEnumerable<AvailableSlot> slots);

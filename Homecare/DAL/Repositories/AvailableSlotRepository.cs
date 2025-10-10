@@ -18,19 +18,32 @@ namespace Homecare.DAL.Repositories
             _db.AvailableSlots.Include(s => s.Personnel).Include(s => s.Appointment)
                .FirstOrDefaultAsync(s => s.AvailableSlotId == id);
 
-        public async Task<List<DateOnly>> GetFreeDaysAsync(DateOnly? from = null)
+        public async Task<List<DateOnly>> GetFreeDaysAsync(int rangeDays = 42)
         {
-            var start = from ?? DateOnly.FromDateTime(DateTime.Today);
-            return await _db.AvailableSlots.Include(s => s.Appointment)
-                .Where(s => s.Appointment == null && s.Day >= start)
-                .Select(s => s.Day).Distinct().OrderBy(d => d).ToListAsync();
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var until = today.AddDays(rangeDays);
+
+            return await _db.AvailableSlots
+                .AsNoTracking()
+                .Where(s =>
+                    s.Day >= today &&
+                    s.Day <= until &&
+                    s.Appointment == null)       // boş slot: randevusu yok
+                .Select(s => s.Day)
+                .Distinct()
+                .OrderBy(d => d)
+                .ToListAsync();
         }
 
-        public Task<List<AvailableSlot>> GetFreeSlotsByDayAsync(DateOnly day) =>
-            _db.AvailableSlots.Include(s => s.Personnel).Include(s => s.Appointment)
-               .Where(s => s.Day == day && s.Appointment == null)
-               .OrderBy(s => s.StartTime).ToListAsync();
-
+        public async Task<List<AvailableSlot>> GetFreeSlotsByDayAsync(DateOnly day)
+        {
+            return await _db.AvailableSlots
+                .AsNoTracking()
+                .Where(s => s.Day == day && s.Appointment == null)
+                .OrderBy(s => s.StartTime)
+                .Include(s => s.Personnel)
+                .ToListAsync();
+        }
         public async Task AddAsync(AvailableSlot slot)
         {
             _db.AvailableSlots.Add(slot);

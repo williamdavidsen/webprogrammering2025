@@ -127,45 +127,59 @@ namespace Homecare.Controllers
         }
 
         // ----------------- CREATE (POST) -----------------
+        // /Client/Create/{clientId}  → POST
         [HttpPost("Create/{clientId:int}"), ValidateAntiForgeryToken]
-
-        public async Task<IActionResult> Createint(int clientId, Appointment model, int[] selectedTaskIds)
+        public async Task<IActionResult> Create(
+            int clientId,
+            [FromForm] Appointment model,
+            [FromForm] int[]? selectedTaskIds)
         {
+            // Route'tan gelen id’yi modele yaz
             model.ClientId = clientId;
 
+            // Slot halen uygun mu?
             if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId))
                 ModelState.AddModelError(nameof(model.AvailableSlotId), "Selected slot is no longer available.");
 
             if (!ModelState.IsValid)
-                return await RefillCreateForm(model, selectedTaskIds);
+                return await RefillCreateForm(model, selectedTaskIds ?? Array.Empty<int>());
 
             await _apptRepo.AddAsync(model);
-            TempData["Message"] = "Appointment booked.";
+
+            // (İleride: selectedTaskIds için TaskList ekleme burada yapılır)
+            if (TempData != null)
+                TempData["Message"] = "Appointment booked.";
             return RedirectToAction(nameof(Dashboard), new { clientId });
         }
+
 
         private async Task<IActionResult> RefillCreateForm(Appointment model, int[] selectedTaskIds)
         {
             await SetOwnerForClientAsync(model.ClientId);
             ViewBag.ClientId = model.ClientId;
 
-            var freeDays = await _slotRepo.GetFreeDaysAsync();
+            var freeDays = await _slotRepo.GetFreeDaysAsync() ?? new List<DateOnly>();
             var freeSet = freeDays.ToHashSet();
 
             const int rangeDays = 14;
             var start = DateOnly.FromDateTime(DateTime.Today);
             ViewBag.DayItems = Enumerable.Range(0, rangeDays)
-                .Select(i => start.AddDays(i))
-                .Select(d => new SelectListItem
-                {
-                    Text = d.ToString("yyyy-MM-dd dddd"),
-                    Value = d.ToString("yyyy-MM-dd"),
-                    Disabled = !freeSet.Contains(d)
-                }).ToList();
+         .Select(i => start.AddDays(i))
+         .Select(d => new SelectListItem
+         {
+             Text = d.ToString("yyyy-MM-dd dddd"),
+             Value = d.ToString("yyyy-MM-dd"),
+             Disabled = !freeSet.Contains(d)
+         })
+         .ToList();
 
             ViewBag.SlotItems = new List<SelectListItem>();
+            var selected = selectedTaskIds ?? Enumerable.Empty<int>();
             ViewBag.TaskOptions = new MultiSelectList(
-                await _taskRepo.GetAllAsync(), "CareTaskId", "Description", selectedTaskIds);
+        await _taskRepo.GetAllAsync() ?? new List<CareTask>(),
+        "CareTaskId", "Description",
+        selected
+    );
 
             return View("Create", model);
         }

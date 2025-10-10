@@ -120,7 +120,7 @@
 
     <partial name="~/Views/Shared/_Message.cshtml" />
 
-    <form asp-action="Create" method="post" class="row g-4">
+    <form asp-action="Create" asp-route-clientId="@clientId" method="post" class="row g-4">
         @Html.AntiForgeryToken()
         <input type="hidden" asp-for="ClientId" value="@clientId" />
         <input type="hidden" asp-for="AvailableSlotId" id="AvailableSlotId" />
@@ -197,19 +197,16 @@
                 </div>
             </div>
 
-            <form asp-action="Create" asp-route-clientId="@clientId" method="post" class="row g-4">
-                @Html.AntiForgeryToken()
-                <input type="hidden" asp-for="ClientId" value="@clientId" />
-                <input type="hidden" asp-for="AvailableSlotId" id="AvailableSlotId" />
 
-                <!-- ... diğer alanlar ... -->
 
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-primary">Book</button>
-                    <a asp-controller="Client" asp-action="Dashboard" asp-route-clientId="@clientId"
-                        class="btn btn-outline-secondary">Cancel</a>
-                </div>
-            </form>
+            <!-- ... diğer alanlar ... -->
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Book</button>
+                <a asp-controller="Client" asp-action="Dashboard" asp-route-clientId="@clientId"
+                    class="btn btn-outline-secondary">Cancel</a>
+            </div>
+
         </div>
     </form>
 </div>

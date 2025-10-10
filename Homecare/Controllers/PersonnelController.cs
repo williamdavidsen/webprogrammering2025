@@ -73,22 +73,29 @@ namespace Homecare.Controllers
 
         // ----- CREATE DAY (POST) => Seçimi uygula -----
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> CreateDay(int personnelId, string days)
+        public async Task<IActionResult> CreateDay(int personnelId, string? days)
         {
+            // Görüntülediğimiz aralık: bugün + 6 hafta
             var from = DateOnly.FromDateTime(DateTime.Today);
             var to = from.AddDays(42);
 
-            var existingDays = (await _slotRepo.GetWorkDaysAsync(personnelId, from, to)).ToHashSet();
-            var lockedDays = (await _slotRepo.GetLockedDaysAsync(personnelId, from, to)).ToHashSet();
+            // Repo null dönerse boş koleksiyonla devam et → ToHashSet patlamaz
+            var existingDays = (await _slotRepo.GetWorkDaysAsync(personnelId, from, to)
+                                ?? Enumerable.Empty<DateOnly>()).ToHashSet();
 
+            var lockedDays = (await _slotRepo.GetLockedDaysAsync(personnelId, from, to)
+                                ?? Enumerable.Empty<DateOnly>()).ToHashSet();
+
+            // Formdan gelen seçimleri topla (CSV: "yyyy-MM-dd,yyyy-MM-dd,...")
             var chosen = new HashSet<DateOnly>();
             if (!string.IsNullOrWhiteSpace(days))
             {
                 foreach (var s in days.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                    if (DateOnly.TryParse(s, out var d)) chosen.Add(d);
+                    if (DateOnly.TryParse(s, out var d))
+                        chosen.Add(d);
             }
 
-            // Ekleme / silme kümeleri
+            // Ekle/sil kümeleri
             var toAdd = chosen.Except(existingDays).ToList();
             var toRemove = existingDays.Except(chosen).ToList();
 
@@ -96,51 +103,73 @@ namespace Homecare.Controllers
             var blocked = toRemove.Where(d => lockedDays.Contains(d)).ToList();
             var removable = toRemove.Where(d => !lockedDays.Contains(d)).ToList();
 
-            // 1) Eklenecek günler için 3 preset slot
+            // --- 1) Eklenecek günlere 3 preset slot ekle ---
             var presets = new (TimeOnly Start, TimeOnly End)[]
             {
-            (new TimeOnly(9,  0), new TimeOnly(11, 0)),
-            (new TimeOnly(12, 0), new TimeOnly(14, 0)),
-            (new TimeOnly(16, 0), new TimeOnly(18, 0))
+        (new TimeOnly(9,  0), new TimeOnly(11, 0)),
+        (new TimeOnly(12, 0), new TimeOnly(14, 0)),
+        (new TimeOnly(16, 0), new TimeOnly(18, 0))
             };
 
-            var newSlots = new List<AvailableSlot>();
-            foreach (var day in toAdd)
+            if (toAdd.Count > 0)
             {
-                foreach (var p in presets)
+                var newSlots = new List<AvailableSlot>(toAdd.Count * presets.Length);
+                foreach (var day in toAdd)
+                    foreach (var p in presets)
+                        newSlots.Add(new AvailableSlot
+                        {
+                            PersonnelId = personnelId,
+                            Day = day,
+                            StartTime = p.Start,
+                            EndTime = p.End
+                        });
+
+                await _slotRepo.AddRangeAsync(newSlots);
+            }
+
+            // --- 2) Randevusu olmayan günlerin slotlarını sil ---
+            if (removable.Count > 0)
+            {
+                foreach (var day in removable)
                 {
-                    newSlots.Add(new AvailableSlot
+                    var slots = await _slotRepo.GetSlotsForPersonnelOnDayAsync(personnelId, day)
+                                ?? Enumerable.Empty<AvailableSlot>();
+
+                    // Güvenlik için tekrar kontrol: listede randevulu slot varsa bu günü de "blocked"a at
+                    if (slots.Any(s => s.Appointment != null))
                     {
-                        PersonnelId = personnelId,
-                        Day = day,
-                        StartTime = p.Start,
-                        EndTime = p.End
-                    });
+                        if (!blocked.Contains(day))
+                            blocked.Add(day);
+                        continue;
+                    }
+
+                    if (slots.Any())
+                        await _slotRepo.RemoveRangeAsync(slots);
                 }
             }
-            if (newSlots.Count > 0)
-                await _slotRepo.AddRangeAsync(newSlots);
 
-            // 2) Randevusu olmayan günlerin slotlarını sil
-            foreach (var day in removable)
+            // --- Kullanıcı mesajı ---
+            if (blocked.Count > 0)
             {
-                var slots = await _slotRepo.GetSlotsForPersonnelOnDayAsync(personnelId, day);
-                await _slotRepo.RemoveRangeAsync(slots);
-            }
-
-            if (blocked.Any())
-            {
-                var msg = "Şu günlerde randevu olduğu için kaldırılamadı: " +
-                          string.Join(", ", blocked.Select(d => d.ToString("yyyy-MM-dd"))) +
-                          ". Lütfen yönetimle iletişime geçiniz.";
-                TempData["Error"] = msg;
+                TempData["Error"] =
+                    "Şu günlerde randevu olduğu için kaldırılamadı: " +
+                    string.Join(", ", blocked.OrderBy(d => d).Select(d => d.ToString("yyyy-MM-dd"))) +
+                    ". Lütfen yönetimle iletişime geçiniz.";
             }
             else
             {
-                TempData["Message"] = "Çalışma günleriniz güncellendi.";
+                var msg = (toAdd.Count, removable.Count) switch
+                {
+                    ( > 0, > 0) => $"{toAdd.Count} gün eklendi, {removable.Count} gün kaldırıldı.",
+                    ( > 0, 0) => $"{toAdd.Count} gün eklendi.",
+                    (0, > 0) => $"{removable.Count} gün kaldırıldı.",
+                    _ => "Herhangi bir değişiklik yok."
+                };
+                TempData["Message"] = msg;
             }
 
             return RedirectToAction(nameof(Dashboard), new { personnelId });
         }
+
     }
 }

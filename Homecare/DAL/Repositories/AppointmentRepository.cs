@@ -13,6 +13,7 @@ namespace Homecare.DAL.Repositories
             _db.Appointments
                .Include(a => a.Client)
                .Include(a => a.AvailableSlot)!.ThenInclude(s => s.Personnel)
+               .Where(a => a.AvailableSlot != null)
                .Include(a => a.Tasks).ThenInclude(t => t.CareTask)
                .OrderBy(a => a.AvailableSlot!.Day)
                .ThenBy(a => a.AvailableSlot!.StartTime)
@@ -22,6 +23,7 @@ namespace Homecare.DAL.Repositories
             _db.Appointments
                .Include(a => a.Client)
                .Include(a => a.AvailableSlot)!.ThenInclude(s => s.Personnel)
+               .Where(a => a.AvailableSlot != null)
                .Include(a => a.Tasks).ThenInclude(t => t.CareTask)
                .FirstOrDefaultAsync(a => a.AppointmentId == id);
 
@@ -29,6 +31,7 @@ namespace Homecare.DAL.Repositories
         public Task<List<Appointment>> GetByClientAsync(int clientId) =>
             _db.Appointments
                .Include(a => a.AvailableSlot)!.ThenInclude(s => s.Personnel)
+               .Where(a => a.AvailableSlot != null)
                .Include(a => a.Tasks).ThenInclude(t => t.CareTask)
                .Where(a => a.ClientId == clientId)
                .ToListAsync();
