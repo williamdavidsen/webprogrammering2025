@@ -3,12 +3,11 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace Homecare.ViewModels
 {
-    public class AppointmentCreateViewModel
+    public class AppointmentEditViewModel
     {
-        // Formdaki randevu alanları
         public Appointment Appointment { get; set; } = new Appointment();
 
-        // Tek seçimlik “Requested Task” için
+        // Edit’te tek seçimlik görev
         public int? SelectedTaskId { get; set; }
 
         // Dropdown içeriği

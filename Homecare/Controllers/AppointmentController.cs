@@ -1,5 +1,6 @@
 using Homecare.DAL.Interfaces;
 using Homecare.Models;
+using Homecare.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
@@ -122,46 +123,68 @@ namespace Homecare.Controllers
             var a = await _apptRepo.GetAsync(id);
             if (a == null) return NotFound();
 
-            // (Eski client dropdown kalsa da sorun olmaz)
-            ViewBag.Clients = new SelectList(
-                await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name", a.ClientId);
-
-            // Takvim için boş günler (client create/edit ile aynı mantık)
-            var freeDays = await _slotRepo.GetFreeDaysAsync();
+            // Takvim için boş günler
+            var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
             ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
 
-            // Görev dropdown (multi) - seçili olanlar işaretli gelsin
-            var selectedTaskIds = await _apptRepo.GetTaskIdsAsync(a.AppointmentId);
-            ViewBag.TaskOptions = new MultiSelectList(
-                await _taskRepo.GetAllAsync(), "CareTaskId", "Description", selectedTaskIds);
+            // Mevcut randevudaki (varsa) ilk görev id’si
+            var currentTaskIds = await _apptRepo.GetTaskIdsAsync(id);
+            int? selectedTaskId = currentTaskIds.FirstOrDefault(); // yoksa 0 döner, null’a çevireceğiz
 
-            return View(a);
+            // Dropdown seçenekleri
+            var allTasks = await _taskRepo.GetAllAsync();
+            var selectList = allTasks.Select(t => new SelectListItem
+            {
+                Value = t.CareTaskId.ToString(),
+                Text = t.Description
+            });
+
+            var vm = new AppointmentEditViewModel
+            {
+                Appointment = a,
+                SelectedTaskId = (selectedTaskId == 0 ? null : selectedTaskId),
+                TaskSelectList = selectList
+            };
+
+            return View(vm);
         }
 
-        // EDIT POST
+        // ================== EDIT (POST) ==================
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(Appointment model, int[]? selectedTaskIds)
+        public async Task<IActionResult> Edit(AppointmentEditViewModel vm)
         {
-            // Seçilen slot hâlâ uygun mu? (kendi appointment’ı hariç)
+            var model = vm.Appointment;
+
+            // Slot hâlâ uygun mu? (ignore: kendisi)
             if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId, model.AppointmentId))
+            {
                 ModelState.AddModelError(nameof(model.AvailableSlotId), "This slot is already booked.");
+            }
 
             if (!ModelState.IsValid)
             {
-                ViewBag.Clients = new SelectList(
-                    await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name", model.ClientId);
-
+                // Hata durumunda takvim & dropdown yenile
                 var freeDaysRetry = await _slotRepo.GetFreeDaysAsync();
                 ViewBag.FreeDays = freeDaysRetry.Select(d => d.ToString("yyyy-MM-dd")).ToList();
 
-                ViewBag.TaskOptions = new MultiSelectList(
-                    await _taskRepo.GetAllAsync(), "CareTaskId", "Description", selectedTaskIds);
+                var allTasks = await _taskRepo.GetAllAsync();
+                vm.TaskSelectList = allTasks.Select(t => new SelectListItem
+                {
+                    Value = t.CareTaskId.ToString(),
+                    Text = t.Description,
+                    Selected = (vm.SelectedTaskId.HasValue && vm.SelectedTaskId.Value == t.CareTaskId)
+                });
 
-                return View(model);
+                return View(vm);
             }
 
             await _apptRepo.UpdateAsync(model);
-            await _apptRepo.ReplaceTasksAsync(model.AppointmentId, selectedTaskIds ?? Array.Empty<int>());
+
+            // Dropdown tek seçim: varsa 1 görev, yoksa boşalt
+            if (vm.SelectedTaskId.HasValue)
+                await _apptRepo.ReplaceTasksAsync(model.AppointmentId, new[] { vm.SelectedTaskId.Value });
+            else
+                await _apptRepo.ReplaceTasksAsync(model.AppointmentId, Array.Empty<int>());
 
             TempData["Message"] = "Appointment updated.";
             return RedirectToAction("Dashboard", "Client", new { clientId = model.ClientId });

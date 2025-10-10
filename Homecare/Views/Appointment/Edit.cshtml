@@ -1,23 +1,20 @@
-@using Homecare.Models
-@using Microsoft.AspNetCore.Mvc.Rendering
+@using Homecare.ViewModels
 @using System.Text.Json
-
-@model Appointment
+@model AppointmentEditViewModel
 
 @{
     ViewData["Title"] = "Edit Appointment";
 
-    var clientId = Model.ClientId;
-    var taskOptions = ViewBag.TaskOptions as MultiSelectList;
+    var clientId = Model.Appointment.ClientId;
 
-    // Controller’da: ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
-    var freeDaysJson = System.Text.Json.JsonSerializer.Serialize(
+    // Controller: ViewBag.FreeDays => IEnumerable<string> (yyyy-MM-dd)
+    var freeDaysJson = JsonSerializer.Serialize(
     (IEnumerable<string>)(ViewBag.FreeDays ?? new List<string>())
     );
 
     // Mevcut randevunun günü (yyyy-MM-dd) ve slot id’si
-    var initialDay = Model.AvailableSlot?.Day.ToString("yyyy-MM-dd") ?? "";
-    var initialSlotId = Model.AvailableSlotId;
+    var initialDay = Model.Appointment.AvailableSlot?.Day.ToString("yyyy-MM-dd") ?? "";
+    var initialSlotId = Model.Appointment.AvailableSlotId;
 }
 
 @section Styles {
@@ -43,7 +40,7 @@
         }
 
         .cal-cell {
-            aspect-ratio: 1 / 1;
+            aspect-ratio: 1/1;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -59,7 +56,7 @@
         }
 
         .cal-day {
-            background-color: #f8f9fa;
+            background: #f8f9fa;
             cursor: pointer;
         }
 
@@ -136,34 +133,37 @@
                 <div class="col-md-4">
                     <div class="readonly-box">
                         <div class="text-muted small">Day</div>
-                        <div class="fw-semibold">@Model.AvailableSlot?.Day.ToString("yyyy-MM-dd")</div>
+                        <div class="fw-semibold">@Model.Appointment.AvailableSlot?.Day.ToString("yyyy-MM-dd")</div>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="readonly-box">
                         <div class="text-muted small">Time</div>
                         <div class="fw-semibold">
-                            @Model.AvailableSlot?.StartTime - @Model.AvailableSlot?.EndTime
+                            @Model.Appointment.AvailableSlot?.StartTime - @Model.Appointment.AvailableSlot?.EndTime
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="readonly-box">
                         <div class="text-muted small">Personnel</div>
-                        <div class="fw-semibold">@Model.AvailableSlot?.Personnel?.Name</div>
+                        <div class="fw-semibold">@Model.Appointment.AvailableSlot?.Personnel?.Name</div>
                     </div>
                 </div>
             </div>
-            <div class="text-muted mt-2">You can change the day/time using the calendar and slot list on the right.
+            <div class="text-muted mt-2">
+                You can change the day/time using the calendar and slot list on the right.
             </div>
         </div>
     </div>
 
     <form asp-action="Edit" method="post" class="row g-4">
         @Html.AntiForgeryToken()
-        <input type="hidden" asp-for="AppointmentId" />
-        <input type="hidden" asp-for="ClientId" value="@clientId" />
-        <input type="hidden" asp-for="AvailableSlotId" id="AvailableSlotId" />
+
+        <!-- ViewModel içindeki Appointment alanlarına bağlan -->
+        <input type="hidden" asp-for="Appointment.AppointmentId" />
+        <input type="hidden" asp-for="Appointment.ClientId" value="@clientId" />
+        <input type="hidden" asp-for="Appointment.AvailableSlotId" id="AvailableSlotId" />
 
         <!-- Sol: Takvim -->
         <div class="col-lg-7">
@@ -199,7 +199,7 @@
             </div>
         </div>
 
-        <!-- Sağ: Slotlar + Status + Notes -->
+        <!-- Sağ: Slotlar + Requested Task + Notes -->
         <div class="col-lg-5">
             <div class="card mb-3">
                 <div class="card-body">
@@ -207,31 +207,26 @@
                     <div id="slotList" class="d-grid gap-2">
                         <div class="text-muted">Pick a day to see its free slots.</div>
                     </div>
-                    <div class="form-text mt-2">Click a slot to select. Seçtiğin slot mavileşir.</div>
+                    <div class="form-text mt-2">Click a slot to select. The chosen one turns blue.</div>
                 </div>
             </div>
 
+            <!-- Requested Task dropdown (tek seçim) -->
             <div class="card mb-3">
                 <div class="card-body">
-                    <h5 class="card-title mb-3">Requested Tasks</h5>
-                    <select name="selectedTaskIds" multiple class="form-select">
-                        @if (taskOptions != null)
-                        {
-                            foreach (var item in taskOptions)
-                            {
-                                <option value="@item.Value">@item.Text</option>
-                            }
-                        }
+                    <label class="form-label">Requested Task</label>
+                    <select asp-for="SelectedTaskId" asp-items="Model.TaskSelectList" class="form-select">
+                        <option value="">— Select a service —</option>
                     </select>
-                    <div class="form-text">Birden fazla görev seçebilirsin.</div>
+                    <span asp-validation-for="SelectedTaskId" class="text-danger"></span>
                 </div>
             </div>
 
             <div class="card mb-3">
                 <div class="card-body">
-                    <label asp-for="Description" class="form-label">Notes</label>
-                    <textarea asp-for="Description" rows="3" class="form-control"></textarea>
-                    <span asp-validation-for="Description" class="text-danger"></span>
+                    <label asp-for="Appointment.Description" class="form-label">Notes</label>
+                    <textarea asp-for="Appointment.Description" rows="3" class="form-control"></textarea>
+                    <span asp-validation-for="Appointment.Description" class="text-danger"></span>
                 </div>
             </div>
 
@@ -253,7 +248,6 @@
 
         let current = INITIAL_DAY ? new Date(INITIAL_DAY) : new Date();
         let selectedDayStr = INITIAL_DAY || null;
-        let selectedSlotId = INITIAL_SLOT_ID || null;
 
         const calTitle = document.getElementById('calTitle');
         const calDays = document.getElementById('calDays');
@@ -268,96 +262,58 @@
         function renderCalendar() {
             const monthName = current.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
             calTitle.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-
             calDays.innerHTML = '';
 
-            const y = current.getFullYear();
-            const m = current.getMonth();
-            const first = new Date(y, m, 1);
-            const last = new Date(y, m + 1, 0);
-            const daysInMonth = last.getDate();
-
-            let startOffset = first.getDay(); // 0=Sun .. 6=Sat
-            if (startOffset === 0) startOffset = 7;
+            const y = current.getFullYear(), m = current.getMonth();
+            const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
+            let startOffset = first.getDay(); if (startOffset === 0) startOffset = 7;
             const blanks = startOffset - 1;
 
-            for (let i = 0; i < blanks; i++) {
-                const div = document.createElement('div');
-                div.className = 'cal-cell';
-                calDays.appendChild(div);
-            }
+            for (let i = 0; i < blanks; i++) { const div = document.createElement('div'); div.className = 'cal-cell'; calDays.appendChild(div); }
 
-            for (let d = 1; d <= daysInMonth; d++) {
-                const date = new Date(y, m, d);
-                const dayStr = ymd(date);
-                const div = document.createElement('div');
-                div.className = 'cal-cell cal-day';
-                div.textContent = d;
+            for (let d = 1; d <= last.getDate(); d++) {
+                const date = new Date(y, m, d), dayStr = ymd(date);
+                const div = document.createElement('div'); div.className = 'cal-cell cal-day'; div.textContent = d;
 
                 if (FREE_DAYS.has(dayStr)) {
-                    div.classList.add('available');
-                    div.title = 'Available';
+                    div.classList.add('available'); div.title = 'Available';
                     div.addEventListener('click', () => selectDay(dayStr, div));
-                } else {
-                    div.classList.add('disabled');
-                    div.title = 'No free slots';
-                }
+                } else { div.classList.add('disabled'); div.title = 'No free slots'; }
 
-                if (selectedDayStr === dayStr) {
-                    div.classList.add('selected');
-                }
-
+                if (selectedDayStr === dayStr) div.classList.add('selected');
                 calDays.appendChild(div);
             }
         }
 
-        function clearSelectedDayVisual() {
-            calDays.querySelectorAll('.cal-day.selected').forEach(el => el.classList.remove('selected'));
-        }
+        function clearSelected() { calDays.querySelectorAll('.cal-day.selected').forEach(el => el.classList.remove('selected')); }
 
         async function selectDay(dayStr, cellEl) {
-            clearSelectedDayVisual();
-            if (cellEl && cellEl.classList) cellEl.classList.add('selected');
-            selectedDayStr = dayStr;
-
+            clearSelected(); cellEl.classList.add('selected'); selectedDayStr = dayStr;
             slotList.innerHTML = '<div class="text-muted">Loading...</div>';
-            selectedSlotId = null;
             slotInput.value = '';
 
             try {
                 const res = await fetch(`/Client/SlotsForDay?day=${encodeURIComponent(dayStr)}`);
-                const data = await res.json(); // [{id, label}, ...]
-
-                if (!data || data.length === 0) {
-                    slotList.innerHTML = '<div class="text-muted">No free slot for this day.</div>';
-                    return;
-                }
+                const data = await res.json(); // [{id,label}]
+                if (!data || data.length === 0) { slotList.innerHTML = '<div class="text-muted">No free slot for this day.</div>'; return; }
 
                 slotList.innerHTML = '';
                 data.forEach(s => {
                     const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'btn btn-outline-secondary slot-btn';
-                    btn.textContent = s.label;
+                    btn.type = 'button'; btn.className = 'btn btn-outline-secondary slot-btn'; btn.textContent = s.label;
 
                     if (INITIAL_DAY === dayStr && String(INITIAL_SLOT_ID) === String(s.id)) {
-                        btn.classList.add('active');
-                        selectedSlotId = s.id;
-                        slotInput.value = s.id;
+                        btn.classList.add('active'); slotInput.value = s.id;
                     }
 
                     btn.addEventListener('click', () => {
                         slotList.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        selectedSlotId = s.id;
-                        slotInput.value = s.id;
+                        btn.classList.add('active'); slotInput.value = s.id;
                     });
 
                     slotList.appendChild(btn);
                 });
-            } catch (e) {
-                slotList.innerHTML = '<div class="text-danger">Error loading slots.</div>';
-            }
+            } catch { slotList.innerHTML = '<div class="text-danger">Error loading slots.</div>'; }
         }
 
         btnPrev.addEventListener('click', () => { current.setMonth(current.getMonth() - 1); renderCalendar(); });
@@ -365,26 +321,19 @@
 
         renderCalendar();
 
-        (async function initSelectExisting() {
+        (async function init() {
             if (INITIAL_DAY) {
                 const dayNum = new Date(INITIAL_DAY).getDate();
-                const cell = Array.from(calDays.querySelectorAll('.cal-day'))
+                const cell = [...calDays.querySelectorAll('.cal-day')]
                     .find(d => d.classList.contains('available') && d.textContent === String(dayNum));
-                if (cell) {
-                    clearSelectedDayVisual();
-                    cell.classList.add('selected');
-                }
+                if (cell) { clearSelected(); cell.classList.add('selected'); }
                 await selectDay(INITIAL_DAY, cell ?? calDays);
                 if (INITIAL_SLOT_ID && !slotInput.value) slotInput.value = INITIAL_SLOT_ID;
             }
         })();
 
         document.forms[0].addEventListener('submit', (e) => {
-            const hasValue = slotInput.value && slotInput.value.trim() !== '';
-            if (!hasValue && !INITIAL_SLOT_ID) {
-                e.preventDefault();
-                alert('Please select a time slot.');
-            }
+            if (!slotInput.value) { e.preventDefault(); alert('Please select a time slot.'); }
         });
     </script>
 }
