@@ -1,16 +1,49 @@
 using Homecare.DAL.Interfaces;
-
 using Homecare.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Homecare.DAL.Repositories
 {
     public class UserRepository : IUserRepository
     {
         private readonly AppDbContext _db;
-        public UserRepository(AppDbContext db) => _db = db;
+        private readonly ILogger<UserRepository> _logger;
 
-        public Task<User?> GetAsync(int id) => _db.Users.FirstOrDefaultAsync(u => u.UserId == id);
-        public Task<List<User>> GetByRoleAsync(UserRole role) => _db.Users.Where(u => u.Role == role).ToListAsync();
+        public UserRepository(AppDbContext db, ILogger<UserRepository> logger)
+        {
+            _db = db;
+            _logger = logger;
+        }
+
+        public async Task<User?> GetAsync(int id)
+        {
+            try
+            {
+                return await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[UserRepository] GetAsync({Id}) failed", id);
+                return null;
+            }
+        }
+
+        public async Task<List<User>> GetByRoleAsync(UserRole role)
+        {
+            try
+            {
+                return await _db.Users
+                    .Where(u => u.Role == role)
+                    .OrderBy(u => u.Name)
+                    .AsNoTracking()
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[UserRepository] GetByRoleAsync({Role}) failed", role);
+                return new List<User>();
+            }
+        }
     }
 }

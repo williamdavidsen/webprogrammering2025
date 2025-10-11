@@ -280,6 +280,10 @@ C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\
 C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\NuGet.ProjectModel.dll
 C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\NuGet.Protocol.dll
 C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\NuGet.Versioning.dll
+C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\Serilog.dll
+C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\Serilog.Extensions.Logging.dll
+C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\Serilog.Sinks.Console.dll
+C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\Serilog.Sinks.File.dll
 C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\SQLitePCLRaw.batteries_v2.dll
 C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\SQLitePCLRaw.core.dll
 C:\Users\ca\Desktop\Oslomet\ITPE3200\Homecare\webprogrammering2025\Homecare\bin\Debug\net8.0\SQLitePCLRaw.provider.e_sqlite3.dll

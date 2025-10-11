@@ -8,15 +8,45 @@ namespace Homecare.DAL.Repositories
     public class AvailableSlotRepository : IAvailableSlotRepository
     {
         private readonly AppDbContext _db;
-        public AvailableSlotRepository(AppDbContext db) => _db = db;
+        private readonly ILogger<AvailableSlotRepository> _logger;
+        public AvailableSlotRepository(AppDbContext db, ILogger<AvailableSlotRepository> logger)
+        {
+            _db = db;
+            _logger = logger;
+        }
 
-        public Task<List<AvailableSlot>> GetAllAsync() =>
-            _db.AvailableSlots.Include(s => s.Personnel).Include(s => s.Appointment)
+        public async Task<List<AvailableSlot>> GetAllAsync()
+        {
+            try
+            {
+                return await _db.AvailableSlots.Include(s => s.Personnel).Include(s => s.Appointment)
                .OrderBy(s => s.Day).ThenBy(s => s.StartTime).ToListAsync();
 
-        public Task<AvailableSlot?> GetAsync(int id) =>
-            _db.AvailableSlots.Include(s => s.Personnel).Include(s => s.Appointment)
+            }
+            catch (Exception e)
+            {
+
+                _logger.LogError(e, "[AvaibleSlotRepostory] GetAllAsync failed");
+                return new List<AvailableSlot>();
+            }
+        }
+
+
+        public async Task<AvailableSlot?> GetAsync(int id)
+        {
+            try
+            {
+                return await _db.AvailableSlots.Include(s => s.Personnel).Include(s => s.Appointment)
                .FirstOrDefaultAsync(s => s.AvailableSlotId == id);
+
+            }
+            catch (Exception e)
+            {
+
+                _logger.LogError(e, "[AvaibleSlotRepostory] GetAsync({Id}) failed", id);
+                return null;
+            }
+        }
 
         public async Task<List<DateOnly>> GetFreeDaysAsync(int rangeDays = 42)
         {

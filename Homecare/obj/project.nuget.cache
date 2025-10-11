@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "oarjfAVaz6s=",
+  "dgSpecHash": "i4LqSQpa6uE=",
   "success": true,
   "projectFilePath": "C:\\Users\\ca\\Desktop\\Oslomet\\ITPE3200\\Homecare\\webprogrammering2025\\Homecare\\Homecare.csproj",
   "expectedPackageFiles": [
@@ -135,6 +135,10 @@
     "C:\\Users\\ca\\.nuget\\packages\\nuget.projectmodel\\6.11.0\\nuget.projectmodel.6.11.0.nupkg.sha512",
     "C:\\Users\\ca\\.nuget\\packages\\nuget.protocol\\6.11.0\\nuget.protocol.6.11.0.nupkg.sha512",
     "C:\\Users\\ca\\.nuget\\packages\\nuget.versioning\\6.11.0\\nuget.versioning.6.11.0.nupkg.sha512",
+    "C:\\Users\\ca\\.nuget\\packages\\serilog\\4.2.0\\serilog.4.2.0.nupkg.sha512",
+    "C:\\Users\\ca\\.nuget\\packages\\serilog.extensions.logging\\9.0.2\\serilog.extensions.logging.9.0.2.nupkg.sha512",
+    "C:\\Users\\ca\\.nuget\\packages\\serilog.sinks.console\\6.0.0\\serilog.sinks.console.6.0.0.nupkg.sha512",
+    "C:\\Users\\ca\\.nuget\\packages\\serilog.sinks.file\\7.0.0\\serilog.sinks.file.7.0.0.nupkg.sha512",
     "C:\\Users\\ca\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\2.1.10\\sqlitepclraw.bundle_e_sqlite3.2.1.10.nupkg.sha512",
     "C:\\Users\\ca\\.nuget\\packages\\sqlitepclraw.core\\2.1.10\\sqlitepclraw.core.2.1.10.nupkg.sha512",
     "C:\\Users\\ca\\.nuget\\packages\\sqlitepclraw.lib.e_sqlite3\\2.1.10\\sqlitepclraw.lib.e_sqlite3.2.1.10.nupkg.sha512",

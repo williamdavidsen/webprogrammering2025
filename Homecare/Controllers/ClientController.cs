@@ -3,6 +3,7 @@ using Homecare.Models;
 using Homecare.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Logging;
 
 namespace Homecare.Controllers
 {
@@ -13,17 +14,20 @@ namespace Homecare.Controllers
         private readonly IAvailableSlotRepository _slotRepo;
         private readonly IUserRepository _userRepo;
         private readonly ICareTaskRepository _taskRepo;
+        private readonly ILogger<ClientController> _logger;
 
         public ClientController(
             IAppointmentRepository apptRepo,
             IAvailableSlotRepository slotRepo,
             IUserRepository userRepo,
-            ICareTaskRepository taskRepo)
+            ICareTaskRepository taskRepo,
+            ILogger<ClientController> logger)
         {
             _apptRepo = apptRepo;
             _slotRepo = slotRepo;
             _userRepo = userRepo;
             _taskRepo = taskRepo;
+            _logger = logger;
         }
 
         // ---- Helper: clientId yoksa ilk müşteriyi bul ----
@@ -47,28 +51,37 @@ namespace Homecare.Controllers
         [HttpGet("Dashboard/{clientId:int?}")]
         public async Task<IActionResult> Dashboard(int? clientId)
         {
-            int id = await ResolveClientId(clientId);
-            await SetOwnerForClientAsync(id);
+            try
+            {
+                int id = await ResolveClientId(clientId);
+                await SetOwnerForClientAsync(id);
 
-            var list = await _apptRepo.GetByClientAsync(id);
-            var now = DateTime.Now;
+                var list = await _apptRepo.GetByClientAsync(id);
+                var now = DateTime.Now;
 
-            var upcoming = list.Where(a => a.AvailableSlot != null &&
-                                           a.AvailableSlot.Day.ToDateTime(a.AvailableSlot.EndTime) >= now)
-                               .OrderBy(a => a.AvailableSlot!.Day)
-                               .ThenBy(a => a.AvailableSlot!.StartTime)
+                var upcoming = list.Where(a => a.AvailableSlot != null &&
+                                               a.AvailableSlot.Day.ToDateTime(a.AvailableSlot.EndTime) >= now)
+                                   .OrderBy(a => a.AvailableSlot!.Day)
+                                   .ThenBy(a => a.AvailableSlot!.StartTime)
+                                   .ToList();
+
+                var past = list.Where(a => a.AvailableSlot != null &&
+                                           a.AvailableSlot.Day.ToDateTime(a.AvailableSlot.EndTime) < now)
+                               .OrderByDescending(a => a.AvailableSlot!.Day)
+                               .ThenByDescending(a => a.AvailableSlot!.StartTime)
                                .ToList();
 
-            var past = list.Where(a => a.AvailableSlot != null &&
-                                       a.AvailableSlot.Day.ToDateTime(a.AvailableSlot.EndTime) < now)
-                           .OrderByDescending(a => a.AvailableSlot!.Day)
-                           .ThenByDescending(a => a.AvailableSlot!.StartTime)
-                           .ToList();
-
-            ViewBag.ClientId = id;
-            ViewBag.Upcoming = upcoming;
-            ViewBag.Past = past;
-            return View();
+                ViewBag.ClientId = id;
+                ViewBag.Upcoming = upcoming;
+                ViewBag.Past = past;
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[ClientController] Dashboard failed (clientId: {Cid})", clientId);
+                TempData["Error"] = "Could not load client dashboard.";
+                return RedirectToAction("Table", "Appointment");
+            }
         }
 
         // ----------------- CREATE (GET) -----------------
@@ -76,90 +89,107 @@ namespace Homecare.Controllers
         [HttpGet("Create/{clientId:int}")]
         public async Task<IActionResult> Create(int clientId, string? day = null)
         {
-            await SetOwnerForClientAsync(clientId);
-            ViewBag.ClientId = clientId;
-
-            // 1) Takvim için boş (free) günleri ver
-            var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
-            ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
-            ViewBag.InitialMonth = (freeDays.Any() ? freeDays.Min() : DateOnly.FromDateTime(DateTime.Today))
-                                    .ToString("yyyy-MM-01");
-
-            // (Opsiyonel) Eski dropdown fallback’ı bırakmak istersen:
-            var freeSet = freeDays.ToHashSet();
-            const int rangeDays = 14;
-            var start = DateOnly.FromDateTime(DateTime.Today);
-            ViewBag.DayItems = Enumerable.Range(0, rangeDays)
-                .Select(i => start.AddDays(i))
-                .Select(d => new SelectListItem
-                {
-                    Text = d.ToString("yyyy-MM-dd dddd"),
-                    Value = d.ToString("yyyy-MM-dd"),
-                    Disabled = !freeSet.Contains(d)
-                }).ToList();
-
-            if (!string.IsNullOrEmpty(day) && DateOnly.TryParse(day, out var sel))
+            try
             {
-                var slots = await _slotRepo.GetFreeSlotsByDayAsync(sel);
-                ViewBag.SlotItems = slots.Select(s => new SelectListItem
+                await SetOwnerForClientAsync(clientId);
+                ViewBag.ClientId = clientId;
+
+                // 1) Takvim için boş (free) günler
+                var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
+                ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+                ViewBag.InitialMonth = (freeDays.Any() ? freeDays.Min() : DateOnly.FromDateTime(DateTime.Today))
+                                        .ToString("yyyy-MM-01");
+
+                // (Opsiyonel) Eski dropdown fallback
+                var freeSet = freeDays.ToHashSet();
+                const int rangeDays = 14;
+                var start = DateOnly.FromDateTime(DateTime.Today);
+                ViewBag.DayItems = Enumerable.Range(0, rangeDays)
+                    .Select(i => start.AddDays(i))
+                    .Select(d => new SelectListItem
+                    {
+                        Text = d.ToString("yyyy-MM-dd dddd"),
+                        Value = d.ToString("yyyy-MM-dd"),
+                        Disabled = !freeSet.Contains(d)
+                    }).ToList();
+
+                if (!string.IsNullOrEmpty(day) && DateOnly.TryParse(day, out var sel))
                 {
-                    Value = s.AvailableSlotId.ToString(),
-                    Text = $"{s.StartTime:HH\\:mm}-{s.EndTime:HH\\:mm} ({s.Personnel?.Name})"
-                }).ToList();
+                    var slots = await _slotRepo.GetFreeSlotsByDayAsync(sel);
+                    ViewBag.SlotItems = slots.Select(s => new SelectListItem
+                    {
+                        Value = s.AvailableSlotId.ToString(),
+                        Text = $"{s.StartTime:HH\\:mm}-{s.EndTime:HH\\:mm} ({s.Personnel?.Name})"
+                    }).ToList();
+                }
+                else
+                {
+                    ViewBag.SlotItems = new List<SelectListItem>();
+                }
+
+                // 2) Dropdown (tek seçim) için görevler
+                var tasks = await _taskRepo.GetAllAsync();
+                var vm = new AppointmentCreateViewModel
+                {
+                    Appointment = new Appointment
+                    {
+                        ClientId = clientId,
+                        Status = AppointmentStatus.Scheduled
+                    },
+                    TaskSelectList = tasks
+                        .Select(t => new SelectListItem { Value = t.CareTaskId.ToString(), Text = t.Description })
+                        .ToList()
+                };
+
+                return View(vm);
             }
-            else
+            catch (Exception ex)
             {
-                ViewBag.SlotItems = new List<SelectListItem>();
+                _logger.LogError(ex, "[ClientController] Create(GET) failed for {Cid}", clientId);
+                TempData["Error"] = "Create page could not be loaded.";
+                return RedirectToAction(nameof(Dashboard), new { clientId });
             }
-
-            // 2) Dropdown (tek seçim) için görevler
-            var tasks = await _taskRepo.GetAllAsync();
-            var vm = new AppointmentCreateViewModel
-            {
-                Appointment = new Appointment
-                {
-                    ClientId = clientId,
-                    Status = AppointmentStatus.Scheduled
-                },
-                TaskSelectList = tasks
-                    .Select(t => new SelectListItem { Value = t.CareTaskId.ToString(), Text = t.Description })
-                    .ToList()
-            };
-
-            return View(vm);
         }
-
 
         // ----------------- CREATE (POST) -----------------
         // /Client/Create/{clientId}  → POST
         [HttpPost("Create/{clientId:int}"), ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(int clientId, AppointmentCreateViewModel vm)
         {
-            // Route’tan gelen id’yi güvence altına al
-            vm.Appointment.ClientId = clientId;
+            try
+            {
+                vm.Appointment.ClientId = clientId;
 
-            // Slot halen uygun mu?
-            if (await _apptRepo.SlotIsBookedAsync(vm.Appointment.AvailableSlotId))
-                ModelState.AddModelError(nameof(vm.Appointment.AvailableSlotId),
-                                         "Selected slot is no longer available.");
+                // Slot halen uygun mu?
+                if (await _apptRepo.SlotIsBookedAsync(vm.Appointment.AvailableSlotId))
+                {
+                    ModelState.AddModelError(nameof(vm.Appointment.AvailableSlotId),
+                                             "Selected slot is no longer available.");
+                }
 
-            if (!ModelState.IsValid)
-                return await RefillCreateFormVM(clientId, vm);
+                if (!ModelState.IsValid)
+                    return await RefillCreateFormVM(clientId, vm);
 
-            await _apptRepo.AddAsync(vm.Appointment);
+                await _apptRepo.AddAsync(vm.Appointment);
 
-            // (İsteğe bağlı) Seçili tek görevi kaydetmek istersen burada ekleyebilirsin:
-            // if (vm.SelectedTaskId.HasValue)
-            //     await _apptRepo.AddTaskAsync(vm.Appointment.AppointmentId, vm.SelectedTaskId.Value);
+                // (İsteğe bağlı tek task kaydı)
+                // if (vm.SelectedTaskId.HasValue)
+                //     await _apptRepo.ReplaceTasksAsync(vm.Appointment.AppointmentId, new[] { vm.SelectedTaskId.Value });
 
-            TempData["Message"] = "Appointment booked.";
-            return RedirectToAction(nameof(Dashboard), new { clientId });
+                TempData["Message"] = "Appointment booked.";
+                return RedirectToAction(nameof(Dashboard), new { clientId });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[ClientController] Create(POST) failed for {Cid}", clientId);
+                TempData["Error"] = "Could not create appointment.";
+                return RedirectToAction(nameof(Dashboard), new { clientId });
+            }
         }
-
-
 
         private async Task<IActionResult> RefillCreateFormVM(int clientId, AppointmentCreateViewModel vm)
         {
+            // formu yeniden doldur
             ViewBag.ClientId = clientId;
 
             var freeDays = await _slotRepo.GetFreeDaysAsync();
@@ -179,7 +209,6 @@ namespace Homecare.Controllers
                     Disabled = !freeSet.Contains(d)
                 }).ToList();
 
-            // Görev dropdown’ını tekrar doldur
             var tasks = await _taskRepo.GetAllAsync();
             vm.TaskSelectList = tasks.Select(t => new SelectListItem
             {
@@ -191,24 +220,30 @@ namespace Homecare.Controllers
             return View("Create", vm);
         }
 
-
-
         // ----------------- AJAX: seçilen günün boş slotlarını getir -----------------
         // /Client/SlotsForDay?day=2025-10-21
         [HttpGet("SlotsForDay")]
         public async Task<IActionResult> SlotsForDay(string day)
         {
-            if (!DateOnly.TryParse(day, out var d))
-                return Json(Array.Empty<object>());
-
-            var slots = await _slotRepo.GetFreeSlotsByDayAsync(d);
-            var data = slots.Select(s => new
+            try
             {
-                id = s.AvailableSlotId,
-                label = $"{s.StartTime:HH\\:mm}-{s.EndTime:HH\\:mm} ({s.Personnel?.Name})"
-            });
+                if (!DateOnly.TryParse(day, out var d))
+                    return Json(Array.Empty<object>());
 
-            return Json(data);
+                var slots = await _slotRepo.GetFreeSlotsByDayAsync(d);
+                var data = slots.Select(s => new
+                {
+                    id = s.AvailableSlotId,
+                    label = $"{s.StartTime:HH\\:mm}-{s.EndTime:HH\\:mm} ({s.Personnel?.Name})"
+                });
+
+                return Json(data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[ClientController] SlotsForDay failed for {Day}", day);
+                return Json(Array.Empty<object>());
+            }
         }
     }
 }

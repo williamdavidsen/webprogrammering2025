@@ -1,51 +1,63 @@
 using Microsoft.EntityFrameworkCore;
-using Homecare.DAL;                    // ItemDbContext + DBInit
-using Homecare.DAL.Interfaces;         // IRepository arayüzleri
-using Homecare.DAL.Repositories;       // Repository sınıfları
-using System.IO;
+using Homecare.DAL;
+using Homecare.DAL.Interfaces;
+using Homecare.DAL.Repositories;
+using Serilog;
+using Serilog.Events;
 using Homecare.Models;
+using Microsoft.Extensions.Logging.Console;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---- MVC ----
+// MVC
 builder.Services.AddControllersWithViews();
 
-// ---- SQLite dosya yolu (App_Data/homecare.db) ----
+// SQLite dosya yolu (App_Data/homecare.db)
 var dataDir = Path.Combine(builder.Environment.ContentRootPath, "App_Data");
 Directory.CreateDirectory(dataDir);
 var defaultSqlite = $"Data Source={Path.Combine(dataDir, "homecare.db")}";
-
-// appsettings.Development.json içindeki bağlantı dizesi yoksa defaultSqlite kullan
 var conn = builder.Configuration.GetConnectionString("AppDbContextConnection") ?? defaultSqlite;
 Console.WriteLine($"[Homecare] SQLite -> {conn}");
 
-// ---- DbContext ----
-builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    options.UseSqlite(conn);
-});
+// DbContext
+builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(conn));
 
-// ---- Repositories (Scoped) ----
+// Repositories
 builder.Services.AddScoped<IAvailableSlotRepository, AvailableSlotRepository>();
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICareTaskRepository, CareTaskRepository>();
 
+// ---------- Serilog: Sadece WARNING ve üzeri, dosyaya yaz ----------
+var logger = new LoggerConfiguration()
+    .MinimumLevel.Warning()                                      // INFO'lar gelmez
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)   // Framework logları da kısılsın
+    .Filter.ByExcluding(e =>
+        e.Properties.TryGetValue("SourceContext", out var _)
+        && e.Level == LogEventLevel.Information
+        && e.MessageTemplate.Text.Contains("Executed DbCommand")) // EF 'Executed DbCommand' filtre (zaten INFO ama dursun)
+    .WriteTo.File($"Logs/app_{DateTime.Now:yyyyMMdd_HHmmss}.log") // konsola yazma, sadece dosya
+    .CreateLogger();
+
+builder.Logging.ClearProviders();   // default Console provider'ı kapat
+builder.Logging.AddSerilog(logger); // Serilog'u bağla
+builder.Logging.AddSimpleConsole();
+builder.Logging.AddFilter<ConsoleLoggerProvider>("Microsoft.Hosting.Lifetime", LogLevel.Information);
+builder.Logging.AddFilter<ConsoleLoggerProvider>("", LogLevel.None); // diğer kategorileri sustur
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
-    // DBInit.Seed içinde EnsureCreated() olmalı (SQLite için yeterli)
-    DBInit.Seed(app);
+    DBInit.Seed(app); // EnsureCreated + seed
 }
 
 app.UseStaticFiles();
-app.UseAuthentication();
 
-// Basit default route
+// (auth ekleyince açarız)
+// app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapDefaultControllerRoute();
-// İstersen aşağıdaki klasik kalıbı da kullanabilirsin:
-// app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();

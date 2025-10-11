@@ -3,6 +3,7 @@ using Homecare.Models;
 using Homecare.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Logging;
 
 namespace Homecare.Controllers
 {
@@ -12,79 +13,65 @@ namespace Homecare.Controllers
         private readonly IAvailableSlotRepository _slotRepo;
         private readonly IUserRepository _userRepo;
         private readonly ICareTaskRepository _taskRepo;
+        private readonly ILogger<AppointmentController> _logger;
 
         public AppointmentController(
             IAppointmentRepository apptRepo,
             IAvailableSlotRepository slotRepo,
             IUserRepository userRepo,
-            ICareTaskRepository taskRepo)
+            ICareTaskRepository taskRepo,
+            ILogger<AppointmentController> logger)
         {
             _apptRepo = apptRepo;
             _slotRepo = slotRepo;
             _userRepo = userRepo;
             _taskRepo = taskRepo;
+            _logger = logger;
         }
 
-        // LIST
-        public async Task<IActionResult> Table() => View(await _apptRepo.GetAllAsync());
-
-        // DETAILS
-        // AppointmentController.cs
-        public async Task<IActionResult> Details(int id, string? backTo = null, int? ownerId = null)
+        public async Task<IActionResult> Table()
         {
-            var a = await _apptRepo.GetAsync(id);
-            if (a == null) return NotFound();
-
-            ViewBag.BackTo = backTo;   // "client" / "personnel" / null
-            ViewBag.OwnerId = ownerId; // ilgili clientId veya personnelId
-            return View(a);
+            try
+            {
+                var list = await _apptRepo.GetAllAsync();
+                return View(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Table failed");
+                TempData["Error"] = "Could not load appointments.";
+                return View(Enumerable.Empty<Appointment>());
+            }
         }
 
+        public async Task<IActionResult> Details(int id)
+        {
+            try
+            {
+                var a = await _apptRepo.GetAsync(id);
+                if (a == null)
+                {
+                    _logger.LogWarning("[AppointmentController] Details: appointment #{Id} not found", id);
+                    return NotFound();
+                }
 
-        // CREATE GET
+                // Back butonu için geldiği yer bilgisi (opsiyonel)
+                ViewBag.ReturnTo = Request.Headers["Referer"].ToString();
+                return View(a);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Details({Id}) failed", id);
+                return StatusCode(500);
+            }
+        }
+
+        [HttpGet]
         public async Task<IActionResult> Create()
         {
-            // Client seçimi (admin ekranı için)
-            ViewBag.Clients = new SelectList(
-                await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name");
-
-            // İlk uygun güne göre boş slotlar (klasik dropdown görünümü)
-            var freeDays = await _slotRepo.GetFreeDaysAsync();
-            var firstDay = freeDays.FirstOrDefault();
-            var freeSlots = (firstDay == default)
-                ? new List<AvailableSlot>()
-                : await _slotRepo.GetFreeSlotsByDayAsync(firstDay);
-
-            ViewBag.FreeSlots = new SelectList(
-                freeSlots.Select(s => new
-                {
-                    s.AvailableSlotId,
-                    Label = $"{s.Day:yyyy-MM-dd} {s.StartTime}-{s.EndTime} ({s.Personnel?.Name})"
-                }),
-                "AvailableSlotId", "Label"
-            );
-
-            // Görev dropdown (multi)
-            ViewBag.TaskOptions = new MultiSelectList(
-                await _taskRepo.GetAllAsync(), "CareTaskId", "Description");
-
-            return View(new Appointment { Status = AppointmentStatus.Scheduled });
-        }
-
-        // CREATE POST
-        [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create(Appointment model, int[]? selectedTaskIds)
-        {
-            if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId))
-                ModelState.AddModelError(nameof(model.AvailableSlotId), "This slot is already booked.");
-
-            if (!ModelState.IsValid)
+            try
             {
-                // formu yeniden doldur
-                ViewBag.Clients = new SelectList(
-                    await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name", model.ClientId);
-
-                // FreeSlots’u tekrar dolduralım (basit: ilk uygun güne göre)
+                ViewBag.Clients = new SelectList(await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name");
                 var freeDays = await _slotRepo.GetFreeDaysAsync();
                 var firstDay = freeDays.FirstOrDefault();
                 var freeSlots = (firstDay == default)
@@ -92,120 +79,176 @@ namespace Homecare.Controllers
                     : await _slotRepo.GetFreeSlotsByDayAsync(firstDay);
 
                 ViewBag.FreeSlots = new SelectList(
-                    freeSlots.Select(s => new
-                    {
-                        s.AvailableSlotId,
-                        Label = $"{s.Day:yyyy-MM-dd} {s.StartTime}-{s.EndTime} ({s.Personnel?.Name})"
-                    }),
-                    "AvailableSlotId", "Label", model.AvailableSlotId
+                    freeSlots.Select(s => new { s.AvailableSlotId, Label = $"{s.Day:yyyy-MM-dd} {s.StartTime}-{s.EndTime} ({s.Personnel?.Name})" }),
+                    "AvailableSlotId", "Label"
                 );
 
-                ViewBag.TaskOptions = new MultiSelectList(
-                    await _taskRepo.GetAllAsync(), "CareTaskId", "Description", selectedTaskIds);
-
-                return View(model);
+                return View(new Appointment { Status = AppointmentStatus.Scheduled });
             }
-
-            await _apptRepo.AddAsync(model);
-
-            // Görev bağlama (varsa)
-            if (selectedTaskIds is { Length: > 0 })
-                await _apptRepo.ReplaceTasksAsync(model.AppointmentId, selectedTaskIds);
-
-            TempData["Message"] = "Appointment created.";
-            return RedirectToAction(nameof(Table));
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Create(GET) failed");
+                TempData["Error"] = "Create page could not be loaded.";
+                return RedirectToAction(nameof(Table));
+            }
         }
 
-        // EDIT GET  (takvimli client-edit görünümüyle uyumlu veriler)
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> Create(Appointment model)
+        {
+            try
+            {
+                if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId))
+                    ModelState.AddModelError(nameof(model.AvailableSlotId), "This slot is already booked.");
+
+                if (!ModelState.IsValid)
+                {
+                    _logger.LogWarning("[AppointmentController] Create(POST) invalid model");
+                    ViewBag.Clients = new SelectList(await _userRepo.GetByRoleAsync(UserRole.Client), "UserId", "Name", model.ClientId);
+                    return View(model);
+                }
+
+                await _apptRepo.AddAsync(model);
+                TempData["Message"] = "Appointment created.";
+                return RedirectToAction(nameof(Table));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Create(POST) failed");
+                TempData["Error"] = "Could not create appointment.";
+                return RedirectToAction(nameof(Table));
+            }
+        }
+
         [HttpGet]
         public async Task<IActionResult> Edit(int id)
         {
-            var a = await _apptRepo.GetAsync(id);
-            if (a == null) return NotFound();
-
-            // Takvim için boş günler
-            var freeDays = await _slotRepo.GetFreeDaysAsync(); // List<DateOnly>
-            ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
-
-            // Mevcut randevudaki (varsa) ilk görev id’si
-            var currentTaskIds = await _apptRepo.GetTaskIdsAsync(id);
-            int? selectedTaskId = currentTaskIds.FirstOrDefault(); // yoksa 0 döner, null’a çevireceğiz
-
-            // Dropdown seçenekleri
-            var allTasks = await _taskRepo.GetAllAsync();
-            var selectList = allTasks.Select(t => new SelectListItem
+            try
             {
-                Value = t.CareTaskId.ToString(),
-                Text = t.Description
-            });
+                var a = await _apptRepo.GetAsync(id);
+                if (a == null) return NotFound();
 
-            var vm = new AppointmentEditViewModel
-            {
-                Appointment = a,
-                SelectedTaskId = (selectedTaskId == 0 ? null : selectedTaskId),
-                TaskSelectList = selectList
-            };
+                // Takvim için boş günler
+                var freeDays = await _slotRepo.GetFreeDaysAsync();
+                ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
 
-            return View(vm);
-        }
+                // Mevcut tekli görev (varsa)
+                int? selectedTaskId = a.Tasks?.Select(t => t.CareTaskId).FirstOrDefault();
 
-        // ================== EDIT (POST) ==================
-        [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(AppointmentEditViewModel vm)
-        {
-            var model = vm.Appointment;
-
-            // Slot hâlâ uygun mu? (ignore: kendisi)
-            if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId, model.AppointmentId))
-            {
-                ModelState.AddModelError(nameof(model.AvailableSlotId), "This slot is already booked.");
-            }
-
-            if (!ModelState.IsValid)
-            {
-                // Hata durumunda takvim & dropdown yenile
-                var freeDaysRetry = await _slotRepo.GetFreeDaysAsync();
-                ViewBag.FreeDays = freeDaysRetry.Select(d => d.ToString("yyyy-MM-dd")).ToList();
-
-                var allTasks = await _taskRepo.GetAllAsync();
-                vm.TaskSelectList = allTasks.Select(t => new SelectListItem
+                // Dropdown için seçenekler
+                var tasks = await _taskRepo.GetAllAsync();
+                var selectList = tasks.Select(t => new SelectListItem
                 {
                     Value = t.CareTaskId.ToString(),
                     Text = t.Description,
-                    Selected = (vm.SelectedTaskId.HasValue && vm.SelectedTaskId.Value == t.CareTaskId)
-                });
+                    Selected = selectedTaskId.HasValue && selectedTaskId.Value == t.CareTaskId
+                }).ToList();
 
-                return View(vm);
+                var vm = new AppointmentEditViewModel
+                {
+                    Appointment = a,
+                    SelectedTaskId = selectedTaskId,
+                    TaskSelectList = selectList
+                };
+
+                return View(vm); // <-- ViewModel
             }
-
-            await _apptRepo.UpdateAsync(model);
-
-            // Dropdown tek seçim: varsa 1 görev, yoksa boşalt
-            if (vm.SelectedTaskId.HasValue)
-                await _apptRepo.ReplaceTasksAsync(model.AppointmentId, new[] { vm.SelectedTaskId.Value });
-            else
-                await _apptRepo.ReplaceTasksAsync(model.AppointmentId, Array.Empty<int>());
-
-            TempData["Message"] = "Appointment updated.";
-            return RedirectToAction("Dashboard", "Client", new { clientId = model.ClientId });
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Edit(GET {Id}) failed", id);
+                TempData["Error"] = "Could not load edit page.";
+                return RedirectToAction(nameof(Table));
+            }
         }
 
-        // DELETE GET
+        // --- EDIT (POST) -> ViewModel al ---
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> Edit(AppointmentEditViewModel vm)
+        {
+            try
+            {
+                var model = vm.Appointment;
+
+                // Seçilen slot başka biri tarafından alındı mı?
+                if (await _apptRepo.SlotIsBookedAsync(model.AvailableSlotId, model.AppointmentId))
+                {
+                    ModelState.AddModelError(nameof(vm.Appointment.AvailableSlotId),
+                        "This slot is already booked.");
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    _logger.LogWarning("[AppointmentController] Edit(POST #{Id}) invalid model", model.AppointmentId);
+                    return await RefillEditFormVM(vm);
+                }
+
+                await _apptRepo.UpdateAsync(model);
+
+                // Tek seçimli "Requested Task"ı güncelle
+                if (vm.SelectedTaskId.HasValue)
+                    await _apptRepo.ReplaceTasksAsync(model.AppointmentId, new[] { vm.SelectedTaskId.Value });
+                else
+                    await _apptRepo.ReplaceTasksAsync(model.AppointmentId, Array.Empty<int>());
+
+                TempData["Message"] = "Appointment updated.";
+                return RedirectToAction("Dashboard", "Client", new { clientId = model.ClientId });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Edit(POST #{Id}) failed", vm.Appointment?.AppointmentId);
+                TempData["Error"] = "Could not update appointment.";
+                return RedirectToAction(nameof(Table));
+            }
+        }
+
+        // Hata durumunda formu yeniden doldur
+        private async Task<IActionResult> RefillEditFormVM(AppointmentEditViewModel vm)
+        {
+            var freeDays = await _slotRepo.GetFreeDaysAsync();
+            ViewBag.FreeDays = freeDays.Select(d => d.ToString("yyyy-MM-dd")).ToList();
+
+            var tasks = await _taskRepo.GetAllAsync();
+            vm.TaskSelectList = tasks.Select(t => new SelectListItem
+            {
+                Value = t.CareTaskId.ToString(),
+                Text = t.Description,
+                Selected = vm.SelectedTaskId == t.CareTaskId
+            }).ToList();
+
+            return View("Edit", vm);
+        }
+        [HttpGet]
         public async Task<IActionResult> Delete(int id)
         {
-            var a = await _apptRepo.GetAsync(id);
-            if (a == null) return NotFound();
-            return View(a);
+            try
+            {
+                var a = await _apptRepo.GetAsync(id);
+                if (a == null) return NotFound();
+                return View(a);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] Delete(GET {Id}) failed", id);
+                TempData["Error"] = "Could not load delete page.";
+                return RedirectToAction(nameof(Table));
+            }
         }
 
-        // DELETE POST
         [HttpPost, ActionName("Delete"), ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
-            var a = await _apptRepo.GetAsync(id);
-            if (a == null) return NotFound();
-            await _apptRepo.DeleteAsync(a);
-            TempData["Message"] = "Appointment deleted.";
+            try
+            {
+                var a = await _apptRepo.GetAsync(id);
+                if (a == null) return NotFound();
+                await _apptRepo.DeleteAsync(a);
+                TempData["Message"] = "Appointment deleted.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AppointmentController] DeleteConfirmed({Id}) failed", id);
+                TempData["Error"] = "Could not delete appointment.";
+            }
             return RedirectToAction(nameof(Table));
         }
     }
